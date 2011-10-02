@@ -2,25 +2,23 @@
 
 import os
 import wx
-import wx.lib.newevent
 import time
 import shutil
 
-import epics
-from epics.wx import DelayedEpicsCallback
 from datetime import timedelta
-from wx_utils import FloatCtrl, SText, addtoMenu, EpicsFunction
+
+import epics
+from epics.wx import DelayedEpicsCallback, EpicsFunction
+
+from wx_utils import FloatCtrl, SText, addtoMenu
 from util import new_filename, increment_filename, nativepath
 
 from configFile import FastMapConfig, conf_files, default_conf
 
 from mapper import mapper
+
+# should look this up from Struck!
 MAX_POINTS = 2048
-
-from EscanWriter import EscanWriter
-DataSaverEvent, EVT_SAVE_DATA = wx.lib.newevent.NewEvent()
-
-SAVE_ESCAN = False
 
 def Connect_Motors():
     conf = FastMapConfig().config
@@ -110,7 +108,6 @@ class FastMapGUI(wx.Frame):
         self.m2stop.SetAction(self.onM2step)        
         self.m2step.SetAction(self.onM2step)
 
-        self.escan_saver = None
         self.data_fname  = None
         self.data_mode   = 'w'        
         self.mapconf = None
@@ -159,9 +156,6 @@ class FastMapGUI(wx.Frame):
         self.m1choice.Bind(wx.EVT_CHOICE, self.onM1Select)
         self.m2choice.Bind(wx.EVT_CHOICE, self.onM2Select)
         self.dimchoice.Bind(wx.EVT_CHOICE, self.onDimension)
-
-        # ties DataSaverEvent to run SaveEscanData
-        # self.Bind(EVT_SAVE_DATA, self.SaveEscanData)
 
 
         self.m1choice.SetBackgroundColour(wx.Colour(255, 255, 255))
@@ -466,40 +460,6 @@ class FastMapGUI(wx.Frame):
         os.chdir(nativepath(self.mapper.basedir))
         self.SetMotorLimits()
 
-    @EpicsFunction
-    def SaveEscanData(self, **kw):
-        """here we run the escan_saver.process() method,
-        which looks for new lines to save to the escan data file"""
-        if not SAVE_ESCAN:
-            return
-        new_lines = 0
-        if self.data_fname is None:
-            self.data_fname = os.path.abspath(os.path.join(nativepath(self.mapper.basedir),
-                                                           self.mapper.filename))
-            
-        if self.escan_saver is None:
-            self.data_fname = os.path.abspath(os.path.join(nativepath(self.mapper.basedir),
-                                                           self.mapper.filename))
-            
-            self.escan_saver = EscanWriter(folder=self.mapper.workdir)        
-
-
-        if (time.time() - self.start_time < 2.0):
-            return
-        
-        self.escan_saver.folder =self.mapper.workdir
-        new_lines = self.escan_saver.process()
-
-        if new_lines > 0:
-            f = open(self.data_fname, self.data_mode)
-            f.write("%s\n" % '\n'.join(self.escan_saver.buff))
-            f.close()
-            self.data_mode  = 'a'
-            print 'Wrote %i lines to %s ' % (new_lines, self.data_fname)
-        try:
-            self.escan_saver.clear()
-        except:
-            pass
     
     @DelayedEpicsCallback
     def onMapRow(self,pvname=None,value=0,**kw):
@@ -509,12 +469,6 @@ class FastMapGUI(wx.Frame):
         time_left = int(0.5+ rowtime * max(0, nrows - value))
         message = "Estimated Time remaining: %s" % timedelta(seconds=time_left)       
         self.statusbar.SetStatusText(message, 0)
-        # note that we generate an event here so that
-        # SaveEscanData will be called shortly
-        # (we don't call it directly here because this
-        # is still 'inside' an Epics callback
-        if value > 0 and SAVE_ESCAN:
-            self.SaveEscanData()
         
     @DelayedEpicsCallback
     def onMapInfo(self,pvname=None,char_value=None,**kw):
@@ -536,9 +490,6 @@ class FastMapGUI(wx.Frame):
             fname = str(self.filename.GetValue())
             if os.path.exists(fname):
                 self.filename.SetValue(increment_filename(fname))
-
-            if SAVE_ESCAN:
-                self.SaveEscanData()
 
             fname = str(self.filename.GetValue())
 
@@ -695,13 +646,13 @@ class FastMapGUI(wx.Frame):
 
         # setup escan saver 
         self.data_mode   = 'w'
-        self.data_fname  = os.path.abspath(os.path.join(nativepath(self.mapper.basedir), self.mapper.filename))
+        self.data_fname  = os.path.abspath(os.path.join(
+            nativepath(self.mapper.basedir), self.mapper.filename))
 
         self.usertitles.Disable()
         self.filename.Disable()        
         self.abortbutton.Enable()        
         self.start_time = time.time()
-        self.escan_saver = EscanWriter(folder=self.mapper.workdir)
         
     @EpicsFunction
     def onAbortScan(self,evt=None):
