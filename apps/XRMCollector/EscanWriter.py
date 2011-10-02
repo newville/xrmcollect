@@ -43,7 +43,7 @@ def readEnvironFile(fname):
     h, d = readASCII(fname, nskip=0, isnumeric=False)
     return h
 
-def readScanConfig(folder): 
+def readScanConfig(folder):
     sfiles = [os.path.join(folder, 'Scan.ini'),
               os.path.join(folder, 'Scan.cnf')]
     found = False
@@ -53,7 +53,7 @@ def readScanConfig(folder):
             break
     if not found:
         raise IOError('No configuration file found')
-    
+
     cp =  ConfigParser()
     cp.read(sfile)
     scan = {}
@@ -80,7 +80,7 @@ def readROIFile(hfile):
             name, dat = cp.get('rois',a).split('|')
             xdat = [int(i) for i in dat.split()]
             dat = [(xdat[0], xdat[1]), (xdat[2], xdat[3]),
-                   (xdat[4], xdat[5]), (xdat[6], xdat[7])] 
+                   (xdat[4], xdat[5]), (xdat[6], xdat[7])]
             output.append((iroi, name.strip(), dat))
     output = sorted(output)
     print 'Read ROI data: %i ROIS ' % len(output)
@@ -100,10 +100,10 @@ class EscanWriter(object):
         self.master_header = None
         self.environ = None
         self.roidata = None
-        self.scanconf = None        
+        self.scanconf = None
         self.last_row = 0
         self.clear()
-        
+
     def ReadMaster(self):
         self.rowdata = None
         self.master_header = None
@@ -132,7 +132,7 @@ class EscanWriter(object):
             self.slow_positioners = fastmap.config['slow_positioners']
             self.fast_positioners = fastmap.config['fast_positioners']
 
-            self.scanconf, self.generalconf = readScanConfig(self.folder) 
+            self.scanconf, self.generalconf = readScanConfig(self.folder)
             scan = self.scanconf
             self.mca_prefix = self.generalconf['xmap']
 
@@ -154,7 +154,7 @@ class EscanWriter(object):
         def add(x):
             self.buff.append(x)
         yval0 = self.rowdata[0][0]
-        
+
         add('; Epics Scan %s dimensional scan' % self.dim)
         if int(self.dim) == 2:
             add(';2D %s: %s' % (self.pos2,yval0))
@@ -171,22 +171,22 @@ class EscanWriter(object):
             add('; Scan Regions: Motor scan with        1 regions')
             add(';       Start       Stop       Step    Time')
             add(';     %(start1)s      %(stop1)s      %(step1)s     %(time1)s' % self.scanconf)
-            
+
         add('; scan %s'  % self.master_header[0][6:])
         add(';====================================')
 
     def clear(self):
         self.buff = []
-       
-    def process(self, maxrow=None):
-        # print '=== Escan Writer: ', self.folder
+
+    def process(self, maxrow=None, verbose=False):
+        # print '=== Escan Writer: ', self.folder, self.last_row
         self.ReadMaster()
         if self.last_row >= len(self.rowdata):
             return 0
 
         def add(x):
             self.buff.append(x)
-            
+
         if self.last_row == 0 and len(self.rowdata)>0:
             self.make_header()
 
@@ -194,8 +194,8 @@ class EscanWriter(object):
             maxrow = len(self.rowdata)
         while self.last_row <  maxrow:
             irow = self.last_row
-            # print '>EscanWrite.process row %i of %i' % (self.last_row, len(self.rowdata))
-            # print self.rowdata[irow]
+            if verbose:
+               print '>EscanWrite.process row %i of %i' % (self.last_row, len(self.rowdata))
 
             yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
 
@@ -210,7 +210,7 @@ class EscanWriter(object):
                     xmapdat     = read_xmap_netcdf(os.path.join(self.folder,xmapfile),verbose=False)
                     #print '.',
                     #if (1+irow) % 20 == 0: print
-                    #sys.stdout.flush()	
+                    #sys.stdout.flush()
                 except:
                     print 'xmap data failed to read'
                     self.clear()
@@ -231,8 +231,9 @@ class EscanWriter(object):
 
             xnpts = xmdat.shape[0]
             # npts = min(snpts,gnpts,xnpts)
-            npts = gnpts-1
+            npts = xnpts-1
             # print gdata.shape, sdata.shape, xmdat.shape, npts
+
             if irow == 0:
                 self.npts0 = npts
                 add('; scan ended at time: %s'  % atime)
@@ -270,14 +271,14 @@ class EscanWriter(object):
 
                 self.legend = ' '.join(legend)
             else:
-                if npts > self.npts0:  
+                if npts > self.npts0:
                     npts = self.npts0
                 if abs(self.npts0-npts) > 1:
                     print 'Broken Data : ', npts, self.npts0, irow
                     print ' > NPTS: (xps, struck, xmap, expected: ) =', npts, gnpts, snpts, xnpts, self.npts0
                 add(';2D %s: %s' % (self.pos2, yval))
                 add('; scan ended at time: %s'  % atime)
-            add(';---------------------------------')    
+            add(';---------------------------------')
             add('; %s' % self.legend)
 
             points = range(1,npts)
@@ -287,21 +288,23 @@ class EscanWriter(object):
                 points.reverse()
             for ipt in points:
                 xval = (gdata[ipt,self.ipos1] + gdata[ipt-1,self.ipos1])/2.0
-                x = ['%.4f %.1f %.1f %.1f' % (xval, sdata[ipt,0]*1.e-3, 
-                                              1000*xm_tr[ipt].mean(), 
+
+                spt = min(ipt, len(sdata)-1)
+                x = ['%.4f %.1f %.1f %.1f' % (xval, sdata[spt,0]*1.e-3,
+                                              1000*xm_tr[ipt].mean(),
                                               1000*xm_tl[ipt].mean()) ]  #
-                x.extend(['%i' %i for i in sdata[ipt+off_struck,:]])
+                x.extend(['%i' %i for i in sdata[spt+off_struck,:]])
                 icr_corr = xmicr[ipt+off_xmap,:] /  (1.e-10 + 1.0*xmocr[ipt+off_xmap,:])
                 raw,cor = [],[]
                 for iroi,lab,rb in self.roidata:
                     intens = numpy.array([xmdat[ipt+off_xmap, i, rb[i][0]:rb[i][1]].sum()  for i in range(4)])
                     raw.append( intens.sum() )
                     cor.append((intens*icr_corr).sum())
-                x.extend(["%i"   % r for r in raw])            
+                x.extend(["%i"   % r for r in raw])
                 x.extend(["%.4f" % r for r in cor])
                 add(' '.join(x))
                 # print ipt, raw
-                
+
             self.last_row += 1
         # print "EscanWrite: ", len(self.buff), ' new lines'
         return len(self.buff)
