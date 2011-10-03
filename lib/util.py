@@ -42,43 +42,6 @@ def nativepath(d):
         return winpath(d)
     return unixpath(d)
 
-class debugtime(object):
-    """ simple class to use for testing of timing:
-    create with:
-    >>> d = debugtime()
-
-    then use
-    >>> d.add('msg11')
-
-    to record times at code points.  Print out results with
-    >>> d.show()
-    which prints messages, total exec time, and time since
-    previous message.
-    """
-    def __init__(self):
-        self.clear()
-
-    def clear(self):
-        self.times = []
-
-    def add(self,msg=''):
-        # print msg
-        self.times.append((msg,time.time()))
-
-    def show(self):
-        m0,t0 = self.times[0]
-        tlast= t0
-        print "# %s  %s " % (m0,time.ctime(t0))
-        print "#----------------"
-        print "#       Message                       Total     Delta"
-        for m,t in self.times[1:]:
-            tt = t-t0
-            dt = t-tlast
-            if len(m)<32:
-                m = m + ' '*(32-len(m))
-            print "  %32s    %.3f    %.3f" % (m,tt, dt)
-            tlast = t
-    
 def random_string(n):
     """  random_string(n)
     generates a random string of length n, that will match this pattern:
