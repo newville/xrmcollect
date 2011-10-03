@@ -14,9 +14,9 @@ except:
 from string import printable
 from ConfigParser import  ConfigParser
 
-from read_xmap_netcdf import read_xmap_netcdf
-from util import debugtime, nativepath
-from configFile import FastMapConfig
+from .xmap import read_xmap_netcdf
+from .utils import debugtime, nativepath
+from config import FastMapConfig
 
 def readASCII(fname, nskip=0, isnumeric=True):
     dat, header = [], []

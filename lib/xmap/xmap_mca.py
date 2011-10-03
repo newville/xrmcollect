@@ -3,7 +3,7 @@ import sys
 import time
 import epics
 import numpy
-from xrmcollect.utils import OrderedDict, debugtime
+from ..utils import OrderedDict, debugtime
 
 class DXP(epics.Device):
     _attrs = ('PreampGain','MaxEnergy','ADCPercentRule','BaselineCutPercent',

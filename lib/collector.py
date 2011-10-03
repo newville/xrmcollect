@@ -15,7 +15,7 @@ from mapper import mapper
 
 from config import FastMapConfig
 from mono_control import mono_control
-from EscanWriter import EscanWriter
+from escan_writer import EscanWriter
 
 USE_XMAP = True
 USE_STRUCK = True

@@ -8,13 +8,12 @@ import shutil
 from datetime import timedelta
 
 import epics
-from epics.wx import DelayedEpicsCallback, EpicsFunction
+from epics.wx import DelayedEpicsCallback, EpicsFunction, SimpleText
 
-from wx_utils import FloatCtrl, SText, addtoMenu
 
 from config import FastMapConfig, conf_files, default_conf
 from mapper import mapper
-from utils import new_filename, increment_filename, nativepath
+from .utils import new_filename, increment_filename, nativepath
 
 # should look this up from Struck!
 MAX_POINTS = 2048
@@ -28,6 +27,11 @@ def Connect_Motors():
         x = pv.get()
         pv.get_ctrlvars()
     return pvs
+
+def addtoMenu(parent,menu,label,text,action=None):
+    ID = wx.NewId()
+    menu.Append(ID,label,text)
+    if callable(action): wx.EVT_MENU(parent, ID, action)
 
 class SetupFrame(wx.Frame):
     def __init__(self, conf=None, **kwds):
@@ -120,24 +124,24 @@ class FastMapGUI(wx.Frame):
 
         self.dimchoice = wx.Choice(pane, size=(120,30))
         self.m1choice = wx.Choice(pane,  size=(120,30))
-        self.m1units  = SText(pane, "",minsize=(50,20))
+        self.m1units  = SimpleText(pane, "",minsize=(50,20))
         self.m1start  = FloatCtrl(pane, precision=4,value=0)
         self.m1stop   = FloatCtrl(pane, precision=4,value=1)
         self.m1step   = FloatCtrl(pane, precision=4,value=0.1)
 
-        self.m1npts   = SText(pane, "0",minsize=(55,20))
+        self.m1npts   = SimpleText(pane, "0",minsize=(55,20))
         # self.rowtime  = FloatCtrl(pane, precision=1, value=10., min=0.)
         self.pixtime  = FloatCtrl(pane, precision=3, value=0.100, min=0.)
 
         self.m2choice = wx.Choice(pane, size=(120,30),choices=[])
-        self.m2units  = SText(pane, "",minsize=(50,20))
+        self.m2units  = SimpleText(pane, "",minsize=(50,20))
         self.m2start  = FloatCtrl(pane, precision=4,value=0)
         self.m2stop   = FloatCtrl(pane, precision=4,value=1)
         self.m2step   = FloatCtrl(pane, precision=4,value=0.1)
-        self.m2npts   = SText(pane, "0",minsize=(60,20))
+        self.m2npts   = SimpleText(pane, "0",minsize=(60,20))
 
-        self.maptime  = SText(pane, "0")
-        self.rowtime  = SText(pane, "0")
+        self.maptime  = SimpleText(pane, "0")
+        self.rowtime  = SimpleText(pane, "0")
         self.t_rowtime = 0.0
 
         self.filename = wx.TextCtrl(pane, -1, "")
@@ -168,11 +172,11 @@ class FastMapGUI(wx.Frame):
 
         # Title row
         nr = 0
-        gs.Add(SText(pane, "XRF Map Setup",
+        gs.Add(SimpleText(pane, "XRF Map Setup",
                      minsize=(200, 30),
                      font=self.Font16, colour=(120,0,0)),
                (nr,0), (1,4),all_cen)
-        gs.Add(SText(pane, "Scan Type",
+        gs.Add(SimpleText(pane, "Scan Type",
                      minsize=(80,20),style=wx.ALIGN_RIGHT),
                (nr,5), (1,1), all_cvert)
         gs.Add(self.dimchoice, (nr,6), (1,2),
@@ -182,17 +186,17 @@ class FastMapGUI(wx.Frame):
                (nr,0), (1,8),all_cen)
         # title
         nr +=1
-        gs.Add(SText(pane, "Stage"),  (nr,1), (1,1), all_bot)
-        gs.Add(SText(pane, "Units",minsize=(50,20)),  (nr,2), (1,1), all_bot)
-        gs.Add(SText(pane, "Start"),  (nr,3), (1,1), all_bot)
-        gs.Add(SText(pane, "Stop"),   (nr,4), (1,1), all_bot)
-        gs.Add(SText(pane, "Step"),   (nr,5), (1,1), all_bot)
-        gs.Add(SText(pane, "Npoints"),(nr,6), (1,1), all_bot)
-        gs.Add(SText(pane, "Time Per Point (s)",
+        gs.Add(SimpleText(pane, "Stage"),  (nr,1), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Units",minsize=(50,20)),  (nr,2), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Start"),  (nr,3), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Stop"),   (nr,4), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Step"),   (nr,5), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Npoints"),(nr,6), (1,1), all_bot)
+        gs.Add(SimpleText(pane, "Time Per Point (s)",
                      minsize=(140,20)),(nr,7), (1,1), all_cvert|wx.ALIGN_LEFT)
         # fast motor row
         nr +=1
-        gs.Add(SText(pane, "Fast Motor", minsize=(90,20)),
+        gs.Add(SimpleText(pane, "Fast Motor", minsize=(90,20)),
                (nr,0),(1,1), all_cvert )
         gs.Add(self.m1choice, (nr,1))
         gs.Add(self.m1units,  (nr,2))
@@ -204,7 +208,7 @@ class FastMapGUI(wx.Frame):
 
         # slow motor row
         nr +=1
-        gs.Add(SText(pane, "Slow Motor", minsize=(90,20)),
+        gs.Add(SimpleText(pane, "Slow Motor", minsize=(90,20)),
                (nr,0),(1,1), all_cvert )
         gs.Add(self.m2choice, (nr,1))
         gs.Add(self.m2units,  (nr,2))
@@ -218,27 +222,27 @@ class FastMapGUI(wx.Frame):
 
         # filename row
         nr +=1
-        gs.Add(SText(pane, "File Name", minsize=(90,20)), (nr,0))
+        gs.Add(SimpleText(pane, "File Name", minsize=(90,20)), (nr,0))
         gs.Add(self.filename, (nr,1), (1,4))
 
-        gs.Add(SText(pane, "Time per line (sec):",
+        gs.Add(SimpleText(pane, "Time per line (sec):",
                      minsize=(-1, 20), style=wx.ALIGN_LEFT),
                (nr,5), (1,2), wx.ALIGN_LEFT)
         gs.Add(self.rowtime, (nr,7))
 
         # title row
         nr +=1
-        gs.Add(SText(pane, "Comments ",
+        gs.Add(SimpleText(pane, "Comments ",
                      minsize=(80,50)), (nr,0))
         gs.Add(self.usertitles,        (nr,1),(1,4))
-        gs.Add(SText(pane, "Time for map (H:Min:Sec):",
+        gs.Add(SimpleText(pane, "Time for map (H:Min:Sec):",
                      minsize=(-1,20), style=wx.ALIGN_LEFT),
                (nr,5), (1,2), wx.ALIGN_LEFT)
         gs.Add(self.maptime, (nr,7))
 
         # button row
         nr +=1
-        gs.Add(SText(pane, " ", minsize=(90,35)), (nr,0))
+        gs.Add(SimpleText(pane, " ", minsize=(90,35)), (nr,0))
         gs.Add(self.startbutton, (nr,1))
         gs.Add(self.abortbutton, (nr,3))
         #

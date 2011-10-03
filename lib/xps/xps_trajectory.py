@@ -5,7 +5,7 @@ import ftplib
 from cStringIO import StringIO
 from string import printable
 
-from xrmcollect.utils import debugtime
+from ..utils import debugtime
 from XPS_C8_drivers import  XPS
 
 ##

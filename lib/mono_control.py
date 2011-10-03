@@ -1,7 +1,7 @@
 #!/usr/bin/python 
 import epics
 import time
-import debugtime
+from utils import debugtime
 
 params = {'Shutter':        'eps_mbbi4',
           'pitchFB_ON':     'mono_pid1.FBON',

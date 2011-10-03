@@ -2,25 +2,6 @@ import wx
 import fpformat
 
 
-def addtoMenu(parent,menu,label,text,action=None):
-    ID = wx.NewId()
-    menu.Append(ID,label,text)
-    if callable(action): wx.EVT_MENU(parent, ID, action)
-    
-class SText(wx.StaticText):
-    def __init__(self,parent,label, 
-                 minsize=(70,20),
-                 font=None,colour=None,bgcolour=None,
-                 style=wx.ALIGN_CENTRE,   **kw):
-
-        wx.StaticText.__init__(self,parent,wx.ID_ANY,
-                               label=label,style=style,**kw)
-
-        self.SetMinSize(minsize)
-        if font is not None:  self.SetFont(font)
-        if colour is not None: self.SetForegroundColour(colour)
-        if bgcolour is not None: self.SetBackgroundColour(colour)
-
 def EpicsFunction(f):
     """decorator to wrap function in a wx.CallAfter() so that
     Epics calls can be made in a separate thread, and asynchronously.
