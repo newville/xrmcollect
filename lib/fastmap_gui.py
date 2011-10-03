@@ -8,8 +8,8 @@ import shutil
 from datetime import timedelta
 
 import epics
-from epics.wx import DelayedEpicsCallback, EpicsFunction, SimpleText
-
+from epics.wx import DelayedEpicsCallback, EpicsFunction
+from epics.wx.utils import SimpleText, FloatCtrl
 
 from config import FastMapConfig, conf_files, default_conf
 from mapper import mapper
@@ -131,7 +131,7 @@ class FastMapGUI(wx.Frame):
 
         self.m1npts   = SimpleText(pane, "0",minsize=(55,20))
         # self.rowtime  = FloatCtrl(pane, precision=1, value=10., min=0.)
-        self.pixtime  = FloatCtrl(pane, precision=3, value=0.100, min=0.)
+        self.pixtime  = FloatCtrl(pane, precision=3, value=0.100, minval=0.)
 
         self.m2choice = wx.Choice(pane, size=(120,30),choices=[])
         self.m2units  = SimpleText(pane, "",minsize=(50,20))
@@ -540,9 +540,12 @@ class FastMapGUI(wx.Frame):
             m1.get_ctrlvars()
         xmin,xmax =  m1.lower_ctrl_limit, m1.upper_ctrl_limit
         self.m1units.SetLabel(m1.units)
-        self.m1step.SetMinMax(-abs(xmax-xmin), abs(xmax-xmin))
-        self.m1start.SetMinMax(xmin, xmax)
-        self.m1stop.SetMinMax(xmin, xmax)
+        self.m1step.SetMin(-abs(xmax-xmin))
+        self.m1step.SetMax( abs(xmax-xmin))
+        self.m1start.SetMin(xmin)
+        self.m1start.SetMax(xmax)
+        self.m1stop.SetMin(xmin)
+        self.m1stop.SetMax(xmax)
 
         m2name = self.m2choice.GetStringSelection()
         if not self.m2choice.IsEnabled() or len(m2name) < 1:
@@ -554,9 +557,12 @@ class FastMapGUI(wx.Frame):
 
         xmin,xmax =  m2.lower_ctrl_limit, m2.upper_ctrl_limit
         self.m2units.SetLabel( m2.units)
-        self.m2step.SetMinMax(-abs(xmax-xmin),abs(xmax-xmin))
-        self.m2start.SetMinMax(xmin,xmax)
-        self.m2stop.SetMinMax(xmin,xmax)
+        self.m2step.SetMin(-abs(xmax-xmin))
+        self.m2step.SetMax( abs(xmax-xmin))
+        self.m2start.SetMin(xmin)
+        self.m2start.SetMax(xmax)
+        self.m2stop.SetMin(xmin)
+        self.m2stop.SetMax(xmax)
 
     def onDimension(self,evt=None):
         cnf = self.config
@@ -661,12 +667,15 @@ class FastMapGUI(wx.Frame):
     def onAbortScan(self,evt=None):
         self.mapper.AbortScan()
 
-if __name__ == "__main__":
+def run():
     motorpvs = Connect_Motors()
     app  = wx.PySimpleApp(redirect=False,
                           filename='fastmap.log')
-
     frame= FastMapGUI(motorpvs=motorpvs)
     app.SetTopWindow(frame)
     frame.Show()
     app.MainLoop()
+
+if __name__ == "__main__":
+    run()
+        

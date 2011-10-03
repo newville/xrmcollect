@@ -8,9 +8,9 @@ import os
 try:
     import scipy.io.netcdf
     netcdf_open = scipy.io.netcdf.netcdf_file
-except ImportError:
-    import netCDF4
-    netcdf_open = netCDF4.Dataset
+# except ImportError:
+#     import netCDF4
+#     netcdf_open = netCDF4.Dataset
 except ImportError:
     raise ImportError('cannot find a netcdf module')
 
