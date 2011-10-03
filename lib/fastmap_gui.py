@@ -12,9 +12,9 @@ from epics.wx import DelayedEpicsCallback, EpicsFunction
 
 from wx_utils import FloatCtrl, SText, addtoMenu
 
-from xrmcollect.config import FastMapConfig, conf_files, default_conf
-from xrmcollect import mapper
-from xrmcollect.utils import new_filename, increment_filename, nativepath
+from config import FastMapConfig, conf_files, default_conf
+from mapper import mapper
+from utils import new_filename, increment_filename, nativepath
 
 # should look this up from Struck!
 MAX_POINTS = 2048
