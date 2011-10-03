@@ -3,7 +3,7 @@ from distutils.core import setup
 import sys
 import lib
 
-no_sqlachemy="""
+no_sqlalchemy="""
 *******************************************************
 *** WARNING - WARNING - WARNING - WARNING - WARNING ***
 
@@ -19,9 +19,6 @@ try:
 
 try:
     import sqlalchemy
-    vers_info = sqlalchemy.__version__.split('.')
-    assert int(vers_info[1]) >= 6
-    assert int(vers_info[2]) >= 5
 except:
     print no_sqlalchemy
     sys.exit()
@@ -34,7 +31,8 @@ setup(name = 'epicscollect',
       license = 'BSD License',
       description = 'X-ray Data Collection library using Epics',
       package_dir = {'epicscollect': 'lib'},
-      packages = ['epicscollect','epicscollect.gui',
+      packages = ['epicscollect','epicscollect.gui','epicscollect.xmap',
+                  'epicscollect.xps', 
                   'epicscollect.utils'])
 
 

@@ -10,7 +10,7 @@ from .utils import debugtime, new_filename, nativepath, winpath, fix_filename, i
 from struck import Struck
 from xmap import MultiXMAP
 
-from xps.xps_trajectory import XPSTrajectory
+from .xps.xps_trajectory import XPSTrajectory
 from mapper import mapper
 
 from config import FastMapConfig
