@@ -105,17 +105,17 @@ class EscanWriter(object):
         self.clear()
 
     def ReadMaster(self):
-        self.rowdata = None
+        self.rowdata = []
         self.master_header = None
 
         if self.folder is not None:
             fname = os.path.join(nativepath(self.folder), self.MasterFile)
-            # print  'EscanWriter Read Scan file ', fname
             if os.path.exists(fname):
                 try:
                     header, rows = readMasterFile(fname)
                 except:
-                    print 'Cannot read Scan folder'
+                    return
+                if len(header) < 1:
                     return
                 self.master_header = header
                 self.rowdata = rows

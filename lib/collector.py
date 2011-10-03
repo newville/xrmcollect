@@ -417,7 +417,8 @@ class TrajectoryScan(object):
         try:
             new_lines = self.escan_saver.process()
         except:
-            # print 'no scan data to process'
+            new_lines = 0    
+        if new_lines < 0:
             return
 
         self.data_fname  = os.path.abspath(os.path.join(nativepath(self.mapper.basedir),
