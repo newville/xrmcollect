@@ -5,16 +5,15 @@ import numpy
 import epics
 from threading import Thread
 
-from util import new_filename, nativepath, winpath, fix_filename, increment_filename
-from debugtime import debugtime
+from .utils import debugtime, new_filename, nativepath, winpath, fix_filename, increment_filename
 
 from struck import Struck
-from xmap_mca  import MultiXMAP
+from xmap import MultiXMAP
 
-from xps_trajectory import XPSTrajectory
+from xps.xps_trajectory import XPSTrajectory
 from mapper import mapper
 
-from configFile import FastMapConfig
+from config import FastMapConfig
 from mono_control import mono_control
 from EscanWriter import EscanWriter
 

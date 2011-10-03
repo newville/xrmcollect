@@ -1,11 +1,10 @@
-#!/usr/bin/python 
+#!/usr/bin/python
 import sys
 import time
 import epics
 import numpy
-import ordereddict
-import debugtime
-    
+from xrmcollect.utils import OrderedDict, debugtime
+
 class DXP(epics.Device):
     _attrs = ('PreampGain','MaxEnergy','ADCPercentRule','BaselineCutPercent',
               'BaselineThreshold','BaselineFilterLength','BaselineCutEnable',
@@ -13,18 +12,18 @@ class DXP(epics.Device):
               'GapTime','PeakingTime','EnergyThreshold','MaxWidth',
               'PresetMode', 'TriggerPeakingTime',
               'TriggerGapTime','TriggerThreshold')
-    
+
     def __init__(self,prefix,mca=1):
         self._prefix = "%sdxp%i" % (prefix, mca)
         self._maxrois = 16
 
         epics.Device.__init__(self, self._prefix, delim=':')
         epics.poll()
-            
-class MCA(epics.Device):  
+
+class MCA(epics.Device):
     _attrs =('CALO','CALS','CALQ','TTH', 'EGU', 'VAL',
              'PRTM', 'PLTM', 'ACT', 'RTIM', 'STIM',
-             'ACQG', 'NUSE','PCT', 'PTCL', 
+             'ACQG', 'NUSE','PCT', 'PTCL',
              'DWEL', 'CHAS', 'PSCL', 'SEQ',
              'ERTM', 'ELTM', 'IDTIM')
 
@@ -39,9 +38,9 @@ class MCA(epics.Device):
         epics.Device.__init__(self,self._prefix, delim='.',
                               attrs= attrs)
         epics.poll()
-        
+
     def getrois(self):
-        rois = ordereddict.OrderedDict()        
+        rois = OrderedDict()
         for i in range(self._maxrois):
             name = self.get('R%iNM'%i)
             if name is not None and len(name.strip()) > 0:
@@ -52,20 +51,20 @@ class MCA(epics.Device):
         return [self.get(i) for i in ('CALO','CALS','CALQ')]
 
 class MultiXMAP(epics.Device):
-    """ 
+    """
     multi-Channel XMAP DXP device
     """
     attrs = ('PresetReal','Dwell','EraseStart','StopAll',
-             'PresetMode', 'PixelsPerBuffer_RBV', 
-             'NextPixel', 'PixelsPerRun', 'Apply', 
+             'PresetMode', 'PixelsPerBuffer_RBV',
+             'NextPixel', 'PixelsPerRun', 'Apply',
              'CollectMode', 'SyncCount', 'BufferSize_RBV')
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
                  'Capture',  'NumCapture', 'WriteFile_RBV',
-                 'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV', 
-                 'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')    
-    
+                 'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
+                 'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
+
     def __init__(self,prefix,filesaver='netCDF1:',nmca=4):
         attrs = list(self.attrs)
         attrs.extend(['%s%s' % (filesaver,p) for p in self.pathattrs])
@@ -87,8 +86,8 @@ class MultiXMAP(epics.Device):
         return [m.get_calib() for m in self.mcas]
 
     def get_rois(self):
-        return [m.getrois() for m in self.mcas]    
-        
+        return [m.getrois() for m in self.mcas]
+
     def roi_calib_info(self):
         buff = ['[rois]']
         add = buff.append
@@ -98,24 +97,24 @@ class MultiXMAP(epics.Device):
             s = [list(roidat[m][k]) for m in range(self.nmca)]
             rd = repr(s).replace('],', '').replace('[', '').replace(']','').replace(',','')
             add("ROI%2.2i = %s | %s" % (i,k,rd))
-            
+
         caldat = numpy.array(self.get_calib())
         add('[calibration]')
         add("OFFSET = %s " % (' '.join(["%.7g" % i for i in caldat[:, 0]])))
         add("SLOPE  = %s " % (' '.join(["%.7g" % i for i in caldat[:, 1]])))
         add("QUAD   = %s " % (' '.join(["%.7g" % i for i in caldat[:, 2]])))
-        
+
         add('[dxp]')
         for a in self.dxps[0]._attrs:
             vals = [str(dxp.get(a, as_string=True)) for dxp in self.dxps]
             add("%s = %s" % (a, ' '.join(vals)))
         return buff
-    
+
     def Write_CurrentConfig(self, filename=None):
-        d = debugtime.debugtime()
+        d = debugtime()
 
         buff = []
-        add = buff.append 
+        add = buff.append
         add('#Multi-Element xMAP Settings saved: %s' % time.ctime())
         add('[general]')
         add('prefix= %s' % self._prefix)
@@ -125,7 +124,7 @@ class MultiXMAP(epics.Device):
         buff.extend( self.roi_calib_info() )
 
         d.add('wrote roi / calib / dxp')
-        
+
         buff = '\n'.join(buff)
         if filename is not None:
             fh = open(filename,'w')
@@ -138,7 +137,7 @@ class MultiXMAP(epics.Device):
     def start(self):
         "Start Struck"
         self.EraseStart = 1
-        
+
         if self.Acquiring == 0:
             epics.poll()
             self.EraseStart = 1
@@ -171,7 +170,7 @@ class MultiXMAP(epics.Device):
 
     def SCAMode(self):
         "put XMAP in SCA mapping mode"
-        self.CollectMode = 2    
+        self.CollectMode = 2
 
     def SpectraMode(self):
         "put XMAP in MCA spectra mode"
@@ -186,10 +185,10 @@ class MultiXMAP(epics.Device):
             time.sleep(0.05)
             if self.BufferSize_RBV < 16384:
                 break
-        
+
     def MCAMode(self, filename=None, filenumber=None, npulses=11):
         "put XMAP in MCA mapping mode"
-        debug = debugtime.debugtime()
+        debug = debugtime()
 
         self.stop()
         self.PresetMode = 0
@@ -221,7 +220,7 @@ class MultiXMAP(epics.Device):
         self.setFileNumber(filenumber)
         if filename is not None:
             self.setFileName(filename)
-        
+
         # wait until BufferSize is ready
         self.Apply = 1
 
@@ -237,18 +236,18 @@ class MultiXMAP(epics.Device):
         ppbuff = self.PixelsPerBuffer_RBV
         time.sleep(0.01)
         if ppbuff is None:
-            ppbuff = 124        
+            ppbuff = 124
         self.setFileNumCapture(1 + int(npulses/(1.0*ppbuff)))
 
         debug.add(' >> xmap MCAmode: FileNumCapture: ')
-          
+
         f_buffsize = -1
         t0 = time.time()
         while time.time()- t0 < 5:
             time.sleep(0.1)
             f_buffsize = self.fileGet('ArraySize0_RBV')
             if self.BufferSize_RBV == f_buffsize:
-                break            
+                break
 
         debug.add(' >> xmap MCAmode NC ArraySize: %i %i ' % ( f_buffsize, self.BufferSize_RBV))
         # debug.show()
@@ -260,7 +259,7 @@ class MultiXMAP(epics.Device):
 
     def fileGet(self,attr, **kw):
         return self.get("%s%s" % (self.filesaver,attr),**kw)
-    
+
     def setFilePath(self,pathname):
         return self.filePut('FilePath',pathname)
 
@@ -287,10 +286,10 @@ class MultiXMAP(epics.Device):
         return self.fileGet('FullFileName_RBV',as_string=True)
 
     def FileCaptureOn(self):
-        return self.filePut('Capture', 1)    
+        return self.filePut('Capture', 1)
 
     def FileCaptureOff(self):
-        return self.filePut('Capture', 0)    
+        return self.filePut('Capture', 0)
 
     def setFileNumCapture(self,n):
         return self.filePut('NumCapture', n)
@@ -312,7 +311,7 @@ class MultiXMAP(epics.Device):
 
     def getFileNameByIndex(self,index):
         return self.getFileTemplate() % (self.getFilePath(), self.getFileName(), index)
-    
+
 if __name__ == '__main__':
     qv = MultiXMAP('13SDD1:', nmca=4)
     qv.Write_CurrentConfig(filename='QuadVortex.conf')
