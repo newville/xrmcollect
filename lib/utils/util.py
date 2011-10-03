@@ -42,43 +42,6 @@ def nativepath(d):
         return winpath(d)
     return unixpath(d)
 
-class debugtime(object):
-    """ simple class to use for testing of timing:
-    create with:
-    >>> d = debugtime()
-
-    then use
-    >>> d.add('msg11')
-
-    to record times at code points.  Print out results with
-    >>> d.show()
-    which prints messages, total exec time, and time since
-    previous message.
-    """
-    def __init__(self):
-        self.clear()
-
-    def clear(self):
-        self.times = []
-
-    def add(self,msg=''):
-        # print msg
-        self.times.append((msg,time.time()))
-
-    def show(self):
-        m0,t0 = self.times[0]
-        tlast= t0
-        print "# %s  %s " % (m0,time.ctime(t0))
-        print "#----------------"
-        print "#       Message                       Total     Delta"
-        for m,t in self.times[1:]:
-            tt = t-t0
-            dt = t-tlast
-            if len(m)<32:
-                m = m + ' '*(32-len(m))
-            print "  %32s    %.3f    %.3f" % (m,tt, dt)
-            tlast = t
-    
 def random_string(n):
     """  random_string(n)
     generates a random string of length n, that will match this pattern:
@@ -89,12 +52,12 @@ def random_string(n):
     s.insert(0, printable[randrange(10,36)])
     return ''.join(s)
 
-def pathOf(dir,base,ext):
+def pathOf(dir, base, ext, delim='.'):
     p = os.path
     #return p.normpath(p.normcase(p.join(dir,"%s.%s" % (base,ext))))
-    return p.normpath(p.join(dir,"%s.%s" % (base,ext)))
+    return p.normpath(p.join(dir,"%s%s%s" % (base, delim, ext)))
 
-def increment_filename(inpfile,ndigits=3):
+def increment_filename(inpfile,ndigits=3, delim='.'):
     """
     increment a data filename, returning a new (non-existing) filename
  
@@ -131,12 +94,19 @@ def increment_filename(inpfile,ndigits=3):
     'path/a.004'
 """
 
-    (dir,  file) = os.path.split(inpfile)
-    (base, ext)  = os.path.splitext(file)
+    dirname,  filename = os.path.split(inpfile)
+    base, ext = os.path.splitext(filename)
+    base, ext = '', ''
+    base = filename.split(delim, 1)
+    if len(base) == 2:
+        base, ext = base
+        
     ext   = ext[1:]
-    if ndigits < 3: ndigits=3
-    form  = "%%.%ii" % ndigits
-    def _incr(base,ext):
+    if ndigits < 3:
+        ndigits = 3
+    form  = "%%.%ii" % (ndigits)
+
+    def _incr(base, ext):
         try: # first, try incrementing the file extension
             ext = form % (int(ext)+1)
         except ValueError:
@@ -149,14 +119,15 @@ def increment_filename(inpfile,ndigits=3):
         return (base,ext)
 
     # increment once
-    base,ext = _incr(base,ext)
-    fout     = pathOf(dir,base,ext)
+
+    base,ext = _incr(base, ext)
+    fout     = pathOf(dirname, base, ext, delim=delim)
 
     # then gaurantee that file does not exist,
     # continuing to increment if necessary
     while(os.path.exists(fout)):
-        base,ext = _incr(base,ext)
-        fout     = pathOf(dir,base,ext)
+        base,ext = _incr(base, ext)
+        fout     = pathOf(dirname, base, ext, delim=delim)
     return fout
 
 def new_filename(fname=None,ndigits=3):
@@ -175,6 +146,25 @@ def new_filename(fname=None,ndigits=3):
         fname = increment_filename(fname,ndigits=ndigits)
 
     return fname
+
+def new_dirname(dirname=None, ndigits=3):
+    """ generate a new subdirectory name (no '.' in name), either
+    based on dirname or generating a random one
+    
+    >>> new_dirname('x.001')   
+    'x_002'
+    # if 'x_001' exists
+    """
+    if dirname is None:
+        ext = ("%%_%ii" % ndigits) % 1
+        dirname = "%s_%s" % (random_string(6), ext)
+        
+    dirname = dirname.replace('.', '_')
+    if os.path.exists(dirname):
+        dirname = increment_filename(dirname, ndigits=ndigits, delim='_')
+        
+
+    return dirname
 
 if (__name__ == '__main__'):
     test = ( ('a.002', 'a.003'),
