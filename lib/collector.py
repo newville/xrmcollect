@@ -53,6 +53,7 @@ class TrajectoryScan(object):
         basedir     = conf.get('general', 'basedir')
         fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
+        self.mono_control = None
         if USE_MONO_CONTROL and 'mono' in conf.get('general'):
             mono_pref = conf.get('general', 'mono')
             self.mono_control = mono_control(mono_pref)
@@ -319,7 +320,7 @@ class TrajectoryScan(object):
                 self.PV(pos2).put(start2 + irow*step2, wait=False)
             self.PV(pos1).put(p1_next, wait=False)
 
-            if USE_MONO_CONTROL:
+            if self.mono_control is not None:
                 self.mono_control.CheckMonoPitch()
 
             # note:
