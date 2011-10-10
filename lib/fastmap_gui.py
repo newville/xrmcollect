@@ -13,7 +13,7 @@ from epics.wx.utils import SimpleText, FloatCtrl
 
 from config import FastMapConfig, conf_files, default_conf
 from mapper import mapper
-from .utils import new_filename, increment_filename, nativepath
+from .io.file_utils import new_filename, increment_filename, nativepath
 
 # should look this up from Struck!
 MAX_POINTS = 2048

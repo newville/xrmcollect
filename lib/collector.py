@@ -5,25 +5,23 @@ import numpy
 import epics
 from threading import Thread
 
-from .utils import debugtime, new_filename, nativepath, winpath, fix_filename, increment_filename
-
-from struck import Struck
-from xmap import MultiXMAP
+from .utils import debugtime
+from .io import nativepath, fix_filename, increment_filename
 
 from .xps.xps_trajectory import XPSTrajectory
-from mapper import mapper
+from .io.escan_writer import EscanWriter
 
+from .xmap import MultiXMAP
+
+from mapper import mapper
 from config import FastMapConfig
 from mono_control import mono_control
-from escan_writer import EscanWriter
+
+from struck import Struck
 
 USE_XMAP = True
 USE_STRUCK = True
-USE_MONO_CONTROL = False # True
-
-# this should go into the configFile, but then again,
-# mono_control is highly specialized to a setup.....
-MONO_PREFIX = '13IDA:'
+USE_MONO_CONTROL = True
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -55,8 +53,11 @@ class TrajectoryScan(object):
         basedir     = conf.get('general', 'basedir')
         fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
+        if USE_MONO_CONTROL and 'mono' in conf.get('general'):
+            mono_pref = conf.get('general', 'mono')
+            self.mono_control = mono_control(mono_pref)
+        
         self.mapper = mapper(prefix=mapdb)
-        self.mono_control = mono_control(MONO_PREFIX)
         self.subdir_index = 0
         self.scan_t0  = time.time()
         self.Connect_ENV_PVs()
@@ -589,5 +590,5 @@ class TrajectoryScan(object):
 
 if __name__ == '__main__':
     t = TrajectoryScan()
-    t.mainloop()
+    # t.mainloop()
 

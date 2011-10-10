@@ -14,7 +14,7 @@ conf_sects = {'general': {},
                        'floats':('start1','stop1', 'step1','time1',
                                  'start2','stop2', 'step2')}}
 
-__c = (('general', ('mapdb', 'struck', 'scaler', 'xmap',
+__c = (('general', ('mapdb', 'struck', 'scaler', 'xmap', 'mono',
                    'fileplugin', 'basedir', 'scandir', 'envfile')),
        ('xps',  ('host', 'user', 'passwd', 'group', 'positioners')),
        ('scan', ('filename', 'dimension', 'comments', 'pos1', 'start1', 'stop1',
@@ -34,6 +34,7 @@ conf_files = ('MapDefault.ini',
 default_conf = """# FastMap configuration file (default)
 [general]
 mapdb = 13XRM:map:
+mono = 13IDA:
 struck = 13IDE:SIS1
 scaler = 13IDE:scaler1
 xmap = dxpMercury:
@@ -170,15 +171,14 @@ class FastMapConfig(object):
     def sections(self):
         return self.config.keys()
 
-    def section(self,section):
+    def section(self, section):
         return self.config[section]
 
-    def get(self,section,value=None):
+    def get(self, section, value=None):
         if value is None:
             return self.config[section]
         else:
-            return self.config[section][value]            
-            
+            return self.config[section][value]
 
         
 if __name__ == "__main__":
