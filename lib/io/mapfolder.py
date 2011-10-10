@@ -57,8 +57,7 @@ def readROIFile(hfile):
     try:
         rois = cp.options('rois')
     except:
-        print 'rois not found'
-        return []
+        return [], []
 
     for a in cp.options('rois'):
         if a.lower().startswith('roi'):
@@ -68,6 +67,12 @@ def readROIFile(hfile):
             dat = [(xdat[0], xdat[1]), (xdat[2], xdat[3]),
                    (xdat[4], xdat[5]), (xdat[6], xdat[7])]
             output.append((iroi, name.strip(), dat))
-    output = sorted(output)
-    print 'Read ROI data: %i ROIS ' % len(output)
-    return output
+    roidata = sorted(output)
+    calib = {}
+    try:
+        caldat = cp.options('calibration')
+        for attr in ('offset', 'slope', 'quad'):
+            calib[attr] = [float(x) for x in cp.get('calibration', attr).split()]
+    except:
+        calib = {}
+    return roidata, calib
