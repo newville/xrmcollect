@@ -1,7 +1,8 @@
 """
 utilities for reading files from raw scan folder
 """
-
+import os
+import numpy
 from ConfigParser import  ConfigParser
 
 def readASCII(fname, nskip=0, isnumeric=True):
@@ -29,6 +30,25 @@ def readEnvironFile(fname):
     h, d = readASCII(fname, nskip=0, isnumeric=False)
     return h
 
+def parseEnviron(text):
+    """ split Environ data into desc, addr, val arrays """
+    env_desc, env_addr, env_vals = [], [], []
+    for eline in text:
+        eline = eline.replace('\t',' ').strip()
+        desc, val = [i.strip() for i in eline[1:].split('=')]
+        addr = ''
+        if '(' in desc:
+            n = desc.rfind('(')
+            addr = desc[n+1:-1]
+            if addr.endswith(')'):
+                addr = addr[:-1]
+            desc = desc[:n].rstrip()
+        env_val.append(val)
+        env_desc.append(desc)
+        env_addr.append(addr)
+    return env_desc, env_addr, env_val
+
+
 def readScanConfig(folder):
     sfiles = [os.path.join(folder, 'Scan.ini'),
               os.path.join(folder, 'Scan.cnf')]
@@ -42,13 +62,14 @@ def readScanConfig(folder):
 
     cp =  ConfigParser()
     cp.read(sfile)
+    timestamp = os.stat(sfile).st_mtime
     scan = {}
     for a in cp.options('scan'):
         scan[a]  = cp.get('scan',a)
     general = {}
     for a in cp.options('general'):
         general[a]  = cp.get('general',a)
-    return scan, general
+    return scan, general, timestamp
 
 def readROIFile(hfile):
     cp =  ConfigParser()
