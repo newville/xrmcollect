@@ -16,8 +16,9 @@ from ..utils import debugtime
 from ..config import FastMapConfig
 
 from file_utils import nativepath
-from mapfolder import (readASCII, readMasterFile, readEnvironFile,
-                        readScanConfig, readROIFile)
+from mapfolder import (readASCII, readMasterFile,
+                       readEnvironFile, parseEnviron,
+                       readScanConfig, readROIFile)
 
 off_struck = 0
 off_xmap   = 0
@@ -31,18 +32,18 @@ class H5Writer(object):
 
     h5_attrs = {'Version': '1.1.0',
                 'Title': 'Epics Scan Data',
-                'Beamline': 'GSECARS, 13-IDE / APS'}
+                'Beamline': 'GSECARS, 13-IDE / APS',
+                'Scan_Type': 'Fast Map',
+                'Correct_Deadtime': 'True'}
 
     def __init__(self, folder=None, **kw):
         self.folder = folder
         self.master_header = None
-        self.environ = None
-        self.roidata = None
-        self.scanconf = None
-        self.last_row = 0
-        self.buff = []
 
-        self.user_titles = []
+        self.h5file = None
+
+        self.last_row = 0
+
         self.scan_regions= []
 
 
@@ -192,104 +193,142 @@ class H5Writer(object):
         self.rowdata = None
         self.master_header = None
 
-        if self.folder is not None:
-            fname = os.path.join(nativepath(self.folder), self.MasterFile)
-            # print  'H5Writer Read Scan file ', fname
-            self.stop_time = os.stat(fname).st_mtime
+        if self.folder is None:
+            return
+        fname = os.path.join(nativepath(self.folder), self.MasterFile)
+        self.stop_time = os.stat(fname).st_mtime
+        if os.path.exists(fname):
+            try:
+                header, rows = readMasterFile(fname)
+            except:
+                print 'Cannot read Scan folder'
+                return
+            self.master_header = header
+            self.rowdata = rows
+            self.start_time = self.master_header[0][6:]
 
-            if os.path.exists(fname):
-                try:
-                    header, rows = readMasterFile(fname)
-                except:
-                    print 'Cannot read Scan folder'
-                    return
-                self.master_header = header
-                self.rowdata = rows
-                self.starttime = self.master_header[0][6:]
-        if self.environ is None:
-            self.environ = readEnvironFile(os.path.join(self.folder, self.EnvFile))
-            self.env_val, self.env_addr, self.env_desc = [], [], []
-            for eline in self.environ:
-                eline = eline.replace('\t',' ').strip()
-                desc, val = eline[1:].split('=')
-                val = val.strip()
-                addr = ''
-                desc = desc.strip()
-                if '(' in desc:
-                    n = desc.rfind('(')
-                    addr = desc[n+1:-1]
-                    if addr.endswith(')'): addr = addr[:-1]
-                    desc = desc[:n].rstrip()
-                self.env_val.append(val)
-                self.env_desc.append(desc)
-                self.env_addr.append(addr)
+    def add_group(self, group,name,dat=None,attrs=None):
+        g = group.create_group(name)
+        if isinstance(dat,dict):
+            for key,val in dat.items():
+                g[key] = val
+        if isinstance(attrs,dict):
+            for key,val in attrs.items():
+                g.attrs[key] = val
+        return g
+
+    def add_data(self, group, name, data, attrs=None, **kws):
+        # print 'create group in HDF file ', name
+        kwargs = {'compression':4}
+        kwargs.update(kws)
+        # print '   add data ', name, group
+        d = group.create_dataset(name,data=data, **kwargs)
+        if isinstance(attrs,dict):
+            for key,val in attrs.items():
+                d.attrs[key] = val
+        return d
+
+    def add_environ(self, group):
+        "add environmental data"
+        envdat = readEnvironFile(os.path.join(self.folder, self.EnvFile))
+        env_desc, env_addr, env_val = parseEnviron(envdat)
+        grp = self.add_group(group, 'environ')
+        self.add_data(grp, 'desc',  env_desc)
+        self.add_data(grp, 'addr',  env_addr)
+        self.add_data(grp, 'value', env_val)
+
+    def add_rois(self, group, mca_prefix):
+        "add ROI data"
+        roidata, calib = readROIFile(os.path.join(self.folder,self.ROIFile))
+        for iroi,label,roidat in roidata:
+            oi_desc.append(label)
+            roi_addr.append("%smca%%i.R%i" % (mca_prefix, iroi))
+            roi_llim.append([roidat[i][0] for i in range(4)])
+            roi_hlim.append([roidat[i][1] for i in range(4)])
+
+        roi_llim = numpy.array(roi_llim)
+        roi_hlim = numpy.array(roi_hlim)
+
+        grp = self.add_group(group,'rois')
+        self.add_data(grp, 'roi_labels',  roi_desc)
+        self.add_data(grp, 'roi_lo_limit', roi_llim)
+        self.add_data(grp, 'roi_hi_limit', roi_hlim)
 
 
-        if self.scanconf is None:
-            fastmap = FastMapConfig()
-            self.slow_positioners = fastmap.config['slow_positioners']
-            self.fast_positioners = fastmap.config['fast_positioners']
+    def begin_h5file(self):
+        """open and start writing to h5file:
+        important: only run this once!"""
+        if self.h5file is not None or self.folder is None:
+            return
 
-            self.scanconf, self.generalconf, self.start_time = readScanConfig(self.folder)
-            scan = self.scanconf
-            self.mca_prefix = self.generalconf['xmap']
+        fastmap = FastMapConfig()
+        slow_pos = fastmap.config['slow_positioners']
+        fast_pos = fastmap.config['fast_positioners']
 
-            self.dimension = self.scanconf['dimension']
-            self.user_titles = self.scanconf['comments'].split('\n')
-            # print 'USER TITLES ', self.user_titles, type(self.user_titles)
+        scanconf, generalconf, start_time = readScanConfig(self.folder)
 
-            self.filename = self.scanconf['filename']
+        dimension = scanconf['dimension']
+        user_titles = scanconf['comments'].split('\n')
+        filename = scanconf['filename']
 
-            self.xaddr = self.scanconf['pos1']
-            self.xdesc = self.slow_positioners[self.xaddr]
+        pos1 = scanconf['pos1']
+        pos_addr = [pos1]
+        pos_desc = [slow_positioners[pos1]]
+        self.ixaddr = -1
+        for i, posname in enumerate(fast_positioners):
+            if posname == pos1:
+                self.ixaddr = i
+        if dimension > 1:
+            pos_addr.append(self.scanconf['pos2'])
+            pos_desc.append(slow_positioners[yaddr])
 
-            self.ixaddr = -1
-            for i, posname in enumerate(self.fast_positioners):
-                if posname == self.xaddr:
-                    self.ixaddr = i
+        #
+        h5name = self.filename + '.h5'
+        fh = self.h5file = h5py.File(h5name, 'w')
+        print 'saving hdf5 file %s' % h5name
 
-            if self.dimension > 1:
-                self.yaddr =self.scanconf['pos2']
-                self.ydesc = self.slow_positioners[self.yaddr]
+        attrs = {'Dimension':dimension,
+                 'Stop_Time':self.stop_time,
+                 'Start_Time':self.start_time}
+        attrs.update(self.h5_attrs)
 
-        if self.roidata is None:
-            # print 'Read ROI data from ', os.path.join(self.folder,self.ROIFile)
-            self.roidata, self.calib = readROIFile(os.path.join(self.folder,self.ROIFile))
-            for iroi,label,roidat in self.roidata:
-                # print 'ROI ', iroi, label, self.mca_prefix
-                # print "%smca1.R%i" % (self.mca_prefix, iroi)
-                self.roi_desc.append(label)
-                self.roi_addr.append("%smca%%i.R%i" % (self.mca_prefix, iroi))
-                self.roi_llim.append([roidat[i][0] for i in range(4)])
-                self.roi_hlim.append([roidat[i][1] for i in range(4)])
+        h5root = self.add_group(fh, 'data', attrs=attrs)
+        self.add_data(h5root, 'user_titles', user_titles)
 
-            self.roi_llim = numpy.array(self.roi_llim)
-            self.roi_hlim = numpy.array(self.roi_hlim)
+        self.add_environ(self, h5root)
+        self.add_rois(self, h5root, generalconf['xmap'])
 
-    def make_header(self):
-        def add(x):
-            self.buff.append(x)
-        yval0 = self.rowdata[0][0]
+        pos = self.add_group(h5root, 'positioners',
+                             attr = {'Dimension': dimension})
 
-        add('; Epics Scan %s dimensional scan' % self.dimension)
-        if int(self.dimension) == 2:
-            add(';2D %s: %s' % (self.yaddr, yval0))
-        add('; current scan = 1')
-        add('; scan dimension = %s' % self.dimension)
-        add('; scan prefix = FAST')
-        add('; User Titles:')
-        for i in self.user_titles:
-            add(';   %s' % i)
-        #         add('; PV list:')
-        #         for t in self.environ:  add("%s"% t)
+        self.add_data(pos, 'names', pos_desc)
+        self.add_data(pos, 'addresses', pos_addr)
 
-        if self.scanconf is not None:
-            add('; Scan Regions: Motor scan with        1 regions')
-            add(';       Start       Stop       Step    Time')
-            add(';     %(start1)s      %(stop1)s      %(step1)s     %(time1)s' % self.scanconf)
+        # self.add_data(pos, 'positions', self.yvals)
 
-        add('; scan %s'  % self.master_header[0][6:])
-        add(';====================================')
+        roiscan = self.add_group(h5root, 'roi_scan')
+        #         add_data(roiscan,'det',            self.det)
+        #         add_data(roiscan,'det_corrected',  self.det_corr)
+        #         add_data(roiscan,'det_desc',       self.det_desc)
+        #         add_data(roiscan,'det_addr',       self.det_addr)
+        #
+        #         add_data(roiscan,'sums',           self.sums)
+        #         add_data(roiscan,'sums_corrected', self.sums_corr)
+        #         add_data(roiscan,'sums_desc',      self.sums_desc)
+
+
+        #en_attrs = {'units':'keV'}
+        #xrf_shape = self.xrf_data.shape
+        #gattrs = {'dimension':self.dimension,'nmca':xrf_shape[-1]}
+        #gattrs.update({'ndetectors':xrf_shape[-2]})
+
+        gxrf = self.add_group(h5root, 'xrf_spectra') # , attrs=gattrs)
+        #add_data(gxrf,'dt_factor', self.dt_factor)
+        #add_data(gxrf,'realtime', self.realtime)
+        #add_data(gxrf,'livetime', self.livetime)
+
+        #add_data(gxrf, 'data',   self.xrf_data)
+        #add_data(gxrf, 'energies', self.xrf_energies, attrs=en_attrs)
 
 
     def process(self, maxrow=None):
@@ -297,7 +336,7 @@ class H5Writer(object):
         self.ReadMaster()
 
         if self.last_row == 0 and len(self.rowdata)>0:
-            self.make_header()
+            self.begin_h5file()
 
         if maxrow is None:
             maxrow = len(self.rowdata)
@@ -305,7 +344,9 @@ class H5Writer(object):
         while self.last_row <  maxrow:
             irow = self.last_row
             self.last_row += 1
-            print '>H5Writer.process row %i of %i' % (self.last_row, len(self.rowdata))
+            print '>H5Writer.process row %i of %i, %s' % (self.last_row,
+                                                          len(self.rowdata),
+                                                          time.ctime())
             yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
 
             self.yvals.append(yval)
@@ -356,9 +397,6 @@ class H5Writer(object):
                 xmdat = xmdat[::-1]
 
             if irow == 0:
-                # print 'Row 0: ', self.xaddr, self.slow_positioners[self.xaddr]
-                #if self.dimension > 1:
-                #    print 'Row 0: ', self.yaddr, self.slow_positioners[self.yaddr]
                 self.xvals = [(gdata[ipt, self.ixaddr] + gdata[ipt-1, self.ixaddr])/2.0
                                for ipt in points]
 
@@ -412,9 +450,9 @@ class H5Writer(object):
 
             self.realtime.append(xm_tr)
             self.livetime.append(xm_tr)
-            self.dt_factor.append(xmicr*1.0/xmocr)
+            self.dt_factor.append(xmicr*1.0/(1.e-10+xmocr))
             self.xrf_data.append(xmdat)
-            corr = ((xmicr*1.0/xmocr)*xmdat.transpose((2,0,1))).transpose(1,2,0)
+            corr = ((xmicr*1.0/(1.e-10+xmocr))*xmdat.transpose((2,0,1))).transpose(1,2,0)
             self.xrf_corr.append(corr)
 
         print 'Done reading.. ', len(self.xrf_data)
