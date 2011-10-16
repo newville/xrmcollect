@@ -101,11 +101,11 @@ class FastMapGUI(wx.Frame):
         self.dimchoice.AppendItems(self._scantypes)
         self.dimchoice.SetSelection(1)
 
-        self.pixtime.SetAction(self.onPixelTime)
 
-        self.m1start.SetAction(self.onM1step)
-        self.m1stop.SetAction(self.onM1step)
-        self.m1step.SetAction(self.onM1step)
+        self.m1start.SetAction(self.calcRowTime)
+        self.m1stop.SetAction(self.calcRowTime)
+        self.m1step.SetAction(self.calcRowTime)
+        self.pixtime.SetAction(self.calcRowTime)
 
         self.m2start.SetAction(self.onM2step)
         self.m2stop.SetAction(self.onM2step)
@@ -125,9 +125,9 @@ class FastMapGUI(wx.Frame):
         self.dimchoice = wx.Choice(pane, size=(120,30))
         self.m1choice = wx.Choice(pane,  size=(120,30))
         self.m1units  = SimpleText(pane, "",minsize=(50,20))
-        self.m1start  = FloatCtrl(pane, precision=4,value=0)
-        self.m1stop   = FloatCtrl(pane, precision=4,value=1)
-        self.m1step   = FloatCtrl(pane, precision=4,value=0.1)
+        self.m1start  = FloatCtrl(pane, precision=4, value=0)
+        self.m1stop   = FloatCtrl(pane, precision=4, value=1)
+        self.m1step   = FloatCtrl(pane, precision=4, value=0.1)
 
         self.m1npts   = SimpleText(pane, "0",minsize=(55,20))
         # self.rowtime  = FloatCtrl(pane, precision=1, value=10., min=0.)
@@ -135,9 +135,9 @@ class FastMapGUI(wx.Frame):
 
         self.m2choice = wx.Choice(pane, size=(120,30),choices=[])
         self.m2units  = SimpleText(pane, "",minsize=(50,20))
-        self.m2start  = FloatCtrl(pane, precision=4,value=0)
-        self.m2stop   = FloatCtrl(pane, precision=4,value=1)
-        self.m2step   = FloatCtrl(pane, precision=4,value=0.1)
+        self.m2start  = FloatCtrl(pane, precision=4, value=0)
+        self.m2stop   = FloatCtrl(pane, precision=4, value=1)
+        self.m2step   = FloatCtrl(pane, precision=4, value=0.1)
         self.m2npts   = SimpleText(pane, "0",minsize=(60,20))
 
         self.maptime  = SimpleText(pane, "0")
@@ -367,6 +367,9 @@ class FastMapGUI(wx.Frame):
 
         fm_keys   = cnf['fast_positioners'].keys()
         cnf['scan']['pos1']   = fm_keys[self.m1choice.GetSelection()]
+
+        self.calcRowTime()
+
         cnf['scan']['start1'] = str(self.m1start.GetValue())
         cnf['scan']['stop1']  = str(self.m1stop.GetValue())
         cnf['scan']['step1']  = str(self.m1step.GetValue())
@@ -442,7 +445,7 @@ class FastMapGUI(wx.Frame):
         self.filename.SetValue(new_filename(cnf['scan']['filename']))
 
         self.connect_mapper()
-        self.onM1step()
+        self.calcRowTime()
         self.onDimension()
 
     @EpicsFunction
@@ -596,7 +599,7 @@ class FastMapGUI(wx.Frame):
     def onM2Select(self,evt=None):
         self.SetMotorLimits()
 
-    def onM2step(self,value=None,**kw):
+    def onM2step(self, value=None, **kw):
         try:
             s1 = self.m2start.GetValue()
             s2 = self.m2stop.GetValue()
@@ -612,7 +615,7 @@ class FastMapGUI(wx.Frame):
         except AttributeError:
             pass
 
-    def onM1step(self,value=None,**kw):
+    def calcRowTime(self, value=None, **kw):
         try:
             s1 = self.m1start.GetValue()
             s2 = self.m1stop.GetValue()
@@ -624,23 +627,16 @@ class FastMapGUI(wx.Frame):
             self.m1npts.SetLabel("  %i" % npts)
             self.t_rowtime = pixt * max(1, npts-1)
             self.rowtime.SetLabel("%.1f" % (self.t_rowtime))
-        except AttributeError:
-            pass
 
-    def onPixelTime(self,value=None,**kw):
-        try:
-            npts1 = float(self.m1npts.GetLabel().strip())
             npts2 = float(self.m2npts.GetLabel().strip())
-
-            self.t_rowtime = value * max(1, (npts1-1))
             maptime = int((self.t_rowtime + 1.25) * max(1, npts2))
             self.maptime.SetLabel("%s" % timedelta(seconds=maptime))
-            self.rowtime.SetLabel("%.1f" % self.t_rowtime)
+
         except AttributeError:
             pass
 
     @EpicsFunction
-    def onStartScan(self,evt=None):
+    def onStartScan(self, evt=None):
         fname = str(self.filename.GetValue())
         if os.path.exists(fname):
             fname = increment_filename(fname)
@@ -678,4 +674,4 @@ def run():
 
 if __name__ == "__main__":
     run()
-        
+
