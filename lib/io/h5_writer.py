@@ -378,8 +378,7 @@ class H5Writer(object):
             # print 'EscanWrite.process Found xmapdata in %.3f sec (%s)' % (time.time()-t0, xmapfile)
             dt.add(' xmap data')
             xmdat = xmapdat.data[:]
-            xmicr = xmapdat.inputCounts[:]
-            xmocr = xmapdat.outputCounts[:]
+            xm_ic = xmapdat.inputCounts[:]/(1.e-12+xmapdat.outputCounts[:])
             xm_tl = xmapdat.liveTime[:]
             xm_tr = xmapdat.realTime[:]
 
@@ -398,10 +397,10 @@ class H5Writer(object):
                 points.reverse()
                 xm_tr = xm_tr[::-1]
                 xm_tl = xm_tl[::-1]
-                xmicr = xmicr[::-1]
-                xmocr = xmocr[::-1]
+                xm_ic = xm_ic[::-1]
                 xmdat = xmdat[::-1]
                 dt.add('reversed data ')
+
             xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points]
 
             roiscan = self.h5root['roi_scan']
@@ -431,11 +430,6 @@ class H5Writer(object):
                 self.add_data(roiscan, 'det_desc',   det_desc)
                 self.add_data(roiscan, 'sums_desc',  sums_desc)
 
-                print 'SHAPE of REALTIME: ', xm_tr.shape, xmicr.shape, xmdat.shape
-                print self.xrf_energies.shape,self.xrf_energies.dtype
-                #print self.xrf_energies[:,1200], self.xrf_energies[:,1201]
-                print xnpts, nchan, nelem,  xmdat.dtype
-                print xm_tr.dtype, xmicr.dtype
                 xrf_energies = xrf.create_dataset('energies', (nchan, nelem), numpy.float32,
                                                   compression=2)
                 rtime = xrf.create_dataset('realtime', (2, xnpts, nchan), numpy.float32,
@@ -460,8 +454,8 @@ class H5Writer(object):
                     xdata.resize((8*(1+irow/8), xnpts, nchan, nelem))
             rtime[irow,:,:] = (xm_tr).astype('float32')
             ltime[irow,:,:] = (xm_tl).astype('float32')
-            icr_corr        = xmicr*1.0/(1.e-12+xmocr)
-            dtcorr[irow,:,:] = icr_corr.astype('float32')
+
+            dtcorr[irow,:,:] = xm_ic.astype('float32')
             #dt.add('add rtime, ltime, corr')
             xdata[irow,:,:,:] = xmdat
             #dt.add('add data')
@@ -471,17 +465,13 @@ class H5Writer(object):
             raw, cor, sraw, scor = rdat, rdat[:], rdat[:], rdat[:]
             for slices in self.roi_slices:
                 iraw = [xmdat[:, i, slices[i]].sum(axis=1)  for i in range(4)]
-                icor = [icr_corr[:, i] * xmdat[:, i, slices[i]].sum(axis=1)  for i in range(4)]
-                #print 'Raw: ', len(iraw), iraw[0].shape, iraw[2].sum()
-                #print 'Cor: ', len(icor), icor[0].shape, icor[2].sum()
-                sraw = sum(iraw)
-                scor = sum(icor)
+                icor = [xmdat[:, i, slices[i]].sum(axis=1) * xm_ic[:, i]
+                        for i in range(4)]
 
-# -                    raw.extend(iraw)
-# -                    cor.extend(icor)
-# -                    sum.append(numpy.array(iraw).sum())
-# -                    sumcor.append(numpy.array(icor).sum())
-# -
+                raw.extend(iraw)
+                cor.extend(icor)
+                sraw.extend(sum(iraw))
+                scor.extend(sum(icor))
 
         # self.xrf_data = numpy.array(self.xrf_data)
 
