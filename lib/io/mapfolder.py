@@ -43,10 +43,10 @@ def parseEnviron(text):
             if addr.endswith(')'):
                 addr = addr[:-1]
             desc = desc[:n].rstrip()
-        env_val.append(val)
+        env_vals.append(val)
         env_desc.append(desc)
         env_addr.append(addr)
-    return env_desc, env_addr, env_val
+    return env_desc, env_addr, env_vals
 
 
 def readScanConfig(folder):
