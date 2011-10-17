@@ -47,10 +47,6 @@ class H5Writer(object):
         self.scan_regions= []
 
 
-        self.env_desc    = []
-        self.env_addr    = []
-        self.env_val     = []
-
         self.pos         = []
         self.det         = []
         self.det_corr = []
@@ -94,13 +90,13 @@ class H5Writer(object):
         except:
             print 'write_h5file error??? ', h5name
 
-        def add_group(group,name,dat=None,attrs=None):
+        def add_group(group, name, data=None, attrs=None):
             g = group.create_group(name)
-            if isinstance(dat,dict):
-                for key,val in dat.items():
+            if isinstance(dat, dict):
+                for key, val in data.items():
                     g[key] = val
-            if isinstance(attrs,dict):
-                for key,val in attrs.items():
+            if isinstance(attrs, dict):
+                for key, val in attrs.items():
                     g.attrs[key] = val
             return g
 
@@ -123,14 +119,14 @@ class H5Writer(object):
         maingroup = add_group(fh,'data', attrs=mainattrs)
 
         g = add_group(maingroup,'environ')
-        add_data(g,'desc',  self.env_desc)
-        add_data(g,'addr',  self.env_addr)
-        add_data(g,'value', self.env_val)
+        # add_data(g,'desc',  self.env_desc)
+        # add_data(g,'addr',  self.env_addr)
+        # add_data(g,'value', self.env_val)
 
         roigroup = add_group(maingroup,'rois')
-        add_data(roigroup, 'roi_labels',  self.roi_desc)
-        add_data(roigroup, 'roi_lo_limit',self.roi_llim)
-        add_data(roigroup, 'roi_hi_limit',self.roi_hlim)
+        add_data(roigroup, 'labels',  self.roi_desc)
+        add_data(roigroup, 'lo_limit',self.roi_llim)
+        add_data(roigroup, 'hi_limit',self.roi_hlim)
 
 
         scan_attrs = {'dimension':self.dimension,
@@ -240,19 +236,26 @@ class H5Writer(object):
     def add_rois(self, group, mca_prefix):
         "add ROI data"
         roidata, calib = readROIFile(os.path.join(self.folder,self.ROIFile))
-        for iroi,label,roidat in roidata:
-            oi_desc.append(label)
+        roi_desc, roi_addr, roi_llim, roi_hlim = [], [], [], []
+        roi_slices = []
+        for iroi, label, roidat in roidata:
+            roi_desc.append(label)
             roi_addr.append("%smca%%i.R%i" % (mca_prefix, iroi))
             roi_llim.append([roidat[i][0] for i in range(4)])
             roi_hlim.append([roidat[i][1] for i in range(4)])
-
+            roi_slices.append([slice(roidat[i][0], roidat[i][1]) for i in range(4)])
         roi_llim = numpy.array(roi_llim)
         roi_hlim = numpy.array(roi_hlim)
 
         grp = self.add_group(group,'rois')
-        self.add_data(grp, 'roi_labels',  roi_desc)
-        self.add_data(grp, 'roi_lo_limit', roi_llim)
-        self.add_data(grp, 'roi_hi_limit', roi_hlim)
+        self.add_data(grp, 'labels',  roi_desc)
+        self.add_data(grp, 'addrs',  roi_addr)
+        self.add_data(grp, 'lo_limit', roi_llim)
+        self.add_data(grp, 'hi_limit', roi_hlim)
+        self.roi_desc = roi_desc
+        self.roi_addr = roi_addr
+        self.roi_slices = roi_slices
+        self.calib = calib
 
 
     def begin_h5file(self):
@@ -273,17 +276,18 @@ class H5Writer(object):
 
         pos1 = scanconf['pos1']
         pos_addr = [pos1]
-        pos_desc = [slow_positioners[pos1]]
+        pos_desc = [slow_pos[pos1]]
         self.ixaddr = -1
-        for i, posname in enumerate(fast_positioners):
+        for i, posname in enumerate(fast_pos):
             if posname == pos1:
                 self.ixaddr = i
         if dimension > 1:
-            pos_addr.append(self.scanconf['pos2'])
-            pos_desc.append(slow_positioners[yaddr])
+            yaddr = scanconf['pos2']
+            pos_addr.append(yaddr)
+            pos_desc.append(slow_pos[yaddr])
 
         #
-        h5name = self.filename + '.h5'
+        h5name = filename + '.h5'
         fh = self.h5file = h5py.File(h5name, 'w')
         print 'saving hdf5 file %s' % h5name
 
@@ -292,29 +296,29 @@ class H5Writer(object):
                  'Start_Time':self.start_time}
         attrs.update(self.h5_attrs)
 
-        h5root = self.add_group(fh, 'data', attrs=attrs)
+        h5root = self.h5root = self.add_group(fh, 'xrf_map', attrs=attrs)
         self.add_data(h5root, 'user_titles', user_titles)
 
-        self.add_environ(self, h5root)
-        self.add_rois(self, h5root, generalconf['xmap'])
+        self.add_environ(h5root)
+        self.add_rois(h5root, generalconf['xmap'])
 
         pos = self.add_group(h5root, 'positioners',
-                             attr = {'Dimension': dimension})
+                             attrs = {'Dimension': dimension})
 
         self.add_data(pos, 'names', pos_desc)
-        self.add_data(pos, 'addresses', pos_addr)
+        self.add_data(pos, 'addrs', pos_addr)
 
         # self.add_data(pos, 'positions', self.yvals)
 
         roiscan = self.add_group(h5root, 'roi_scan')
-        #         add_data(roiscan,'det',            self.det)
-        #         add_data(roiscan,'det_corrected',  self.det_corr)
-        #         add_data(roiscan,'det_desc',       self.det_desc)
-        #         add_data(roiscan,'det_addr',       self.det_addr)
+        #         add_data(roiscan,'det',       self.det)
+        #         add_data(roiscan,'det_corr',  self.det_corr)
+        #         add_data(roiscan,'det_desc',  self.det_desc)
+        #         add_data(roiscan,'det_addr',  self.det_addr)
         #
-        #         add_data(roiscan,'sums',           self.sums)
-        #         add_data(roiscan,'sums_corrected', self.sums_corr)
-        #         add_data(roiscan,'sums_desc',      self.sums_desc)
+        #         add_data(roiscan,'sums',       self.sums)
+        #         add_data(roiscan,'sums_corr',  self.sums_corr)
+        #         add_data(roiscan,'sums_desc',  self.sums_desc)
 
 
         #en_attrs = {'units':'keV'}
@@ -341,8 +345,10 @@ class H5Writer(object):
         if maxrow is None:
             maxrow = len(self.rowdata)
 
+        roiscan = self.h5root['roi_scan']
         while self.last_row <  maxrow:
             irow = self.last_row
+            dt = debugtime()
             self.last_row += 1
             print '>H5Writer.process row %i of %i, %s' % (self.last_row,
                                                           len(self.rowdata),
@@ -350,9 +356,9 @@ class H5Writer(object):
             yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
 
             self.yvals.append(yval)
-
             shead,sdata = readASCII(os.path.join(self.folder,struckfile))
             ghead,gdata = readASCII(os.path.join(self.folder,gatherfile))
+            dt.add(' xps, struck, row data')
             t0 = time.time()
             atime = -1
             while atime < 0 and time.time()-t0 < 10:
@@ -370,7 +376,7 @@ class H5Writer(object):
             if atime < 0:
                 return 0
             # print 'EscanWrite.process Found xmapdata in %.3f sec (%s)' % (time.time()-t0, xmapfile)
-
+            dt.add(' xmap data')
             xmdat = xmapdat.data[:]
             xmicr = xmapdat.inputCounts[:]
             xmocr = xmapdat.outputCounts[:]
@@ -395,79 +401,95 @@ class H5Writer(object):
                 xmicr = xmicr[::-1]
                 xmocr = xmocr[::-1]
                 xmdat = xmdat[::-1]
+                dt.add('reversed data ')
+            xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points]
+
+            roiscan = self.h5root['roi_scan']
+            pos     = self.h5root['positioners']
+            xrf     = self.h5root['xrf_spectra']
 
             if irow == 0:
-                self.xvals = [(gdata[ipt, self.ixaddr] + gdata[ipt-1, self.ixaddr])/2.0
-                               for ipt in points]
-
-                self.det_addr = [i.strip() for i in shead[-2][1:].split('|')]
-                self.det_desc = [i.strip() for i in shead[-1][1:].split('|')]
-                self.sums_desc = self.det_desc[:]
+                det_addr = [i.strip() for i in shead[-2][1:].split('|')]
+                det_desc = [i.strip() for i in shead[-1][1:].split('|')]
+                sums_desc = self.det_desc[:]
 
                 off, slope = self.calib['offset'], self.calib['slope']
-                nchan = len(self.calib['offset'])
-
-
                 xnpts, nchan, nelem = xmdat.shape
 
+                print 'Row 0 : ',  off, slope, snpts, nscalers, xnpts, nchan, nelem
+
                 enx = [(off[i] + slope[i]*numpy.arange(nelem)) for i in range(nchan)]
-                self.xrf_energies = numpy.array(enx)
+                self.xrf_energies = numpy.array(enx, dtype=numpy.float32)
 
                 for addr in self.roi_addr:
-                    self.det_addr.extend([addr % (i+1) for i in range(nchan)])
+                    det_addr.extend([addr % (i+1) for i in range(nchan)])
                 for desc in self.roi_desc:
-                    self.det_desc.extend(["%s (mca%i)" % (desc, i+1) for i in range(nchan)])
-                    self.sums_desc.append(desc)
+                    det_desc.extend(["%s (mca%i)" % (desc, i+1) for i in range(nchan)])
+                    sums_desc.append(desc)
 
-            these_x = [(gdata[ipt, self.ixaddr] + gdata[ipt-1, self.ixaddr])/2.0
-                       for ipt in points]
+                self.add_data(roiscan, 'det_addr',   det_addr)
+                self.add_data(roiscan, 'det_desc',   det_desc)
+                self.add_data(roiscan, 'sums_desc',  sums_desc)
 
-            row_det, row_detc, row_sum, row_sumc = [],[],[],[]
-            for ipt in points:
-                spt = ipt-1
-                if spt >= sdata.shape[0]:
-                    spt = sdata.shape[0]-1
-                rdat = [ixs for ixs in sdata[spt,:]]
-                icr_corr = xmicr[ipt,:] /  (1.e-10 + 1.0*xmocr[ipt,:])
-                raw, cor, sum, sumcor = rdat, rdat[:], rdat[:], rdat[:]
-                for iroi, lab, rb in self.roidata:
-                    iraw = [xmdat[ipt, i, rb[i][0]:rb[i][1]].sum()  for i in range(4)]
-                    icor = [iraw[i] * icr_corr[i] for i in range(4)]
-                    raw.extend(iraw)
-                    cor.extend(icor)
-                    sum.append(numpy.array(iraw).sum())
-                    sumcor.append(numpy.array(icor).sum())
+                print 'SHAPE of REALTIME: ', xm_tr.shape, xmicr.shape, xmdat.shape
+                print self.xrf_energies.shape,self.xrf_energies.dtype
+                #print self.xrf_energies[:,1200], self.xrf_energies[:,1201]
+                print xnpts, nchan, nelem,  xmdat.dtype
+                print xm_tr.dtype, xmicr.dtype
+                xrf_energies = xrf.create_dataset('energies', (nchan, nelem), numpy.float32,
+                                                  compression=2)
+                rtime = xrf.create_dataset('realtime', (2, xnpts, nchan), numpy.float32,
+                                           maxshape=(None, xnpts, nchan), compression=2)
+                ltime = xrf.create_dataset('livetime', (2, xnpts, nchan), numpy.float32,
+                                           maxshape=(None, xnpts, nchan), compression=2)
+                dtcorr = xrf.create_dataset('dt_factor', (2, xnpts, nchan), numpy.float32,
+                                           maxshape=(None, xnpts, nchan), compression=2)
+                xdata = xrf.create_dataset('data', (2, xnpts, nchan, nelem), xmdat.dtype,
+                                           compression=2)
+                dt.add('add row 0 ')
+            else:
+                rtime = xrf['realtime']
+                if rtime.shape[0] <= irow:
+                    ltime = xrf['livetime']
+                    dtcorr = xrf['dt_factor']
+                    xdata  = xrf['data']
+                    d, xnpts, nchan, nelem = xdata.shape
+                    rtime.resize((8*(1+irow/8), xnpts, nchan))
+                    ltime.resize((8*(1+irow/8), xnpts, nchan))
+                    dtcorr.resize((8*(1+irow/8), xnpts, nchan))
+                    xdata.resize((8*(1+irow/8), xnpts, nchan, nelem))
+            rtime[irow,:,:] = (xm_tr).astype('float32')
+            ltime[irow,:,:] = (xm_tl).astype('float32')
+            icr_corr        = xmicr*1.0/(1.e-12+xmocr)
+            dtcorr[irow,:,:] = icr_corr.astype('float32')
+            #dt.add('add rtime, ltime, corr')
+            xdata[irow,:,:,:] = xmdat
+            #dt.add('add data')
+            #dt.show()
+            # print sdata.shape
+            rdat = list(sdata.transpose())
+            raw, cor, sraw, scor = rdat, rdat[:], rdat[:], rdat[:]
+            for slices in self.roi_slices:
+                iraw = [xmdat[:, i, slices[i]].sum(axis=1)  for i in range(4)]
+                icor = [icr_corr[:, i] * xmdat[:, i, slices[i]].sum(axis=1)  for i in range(4)]
+                #print 'Raw: ', len(iraw), iraw[0].shape, iraw[2].sum()
+                #print 'Cor: ', len(icor), icor[0].shape, icor[2].sum()
+                sraw = sum(iraw)
+                scor = sum(icor)
 
-                row_det.append(raw)
-                row_detc.append(cor)
-                row_sum.append(sum)
-                row_sumc.append(sumcor)
+# -                    raw.extend(iraw)
+# -                    cor.extend(icor)
+# -                    sum.append(numpy.array(iraw).sum())
+# -                    sumcor.append(numpy.array(icor).sum())
+# -
 
-            self.det.append(row_det)
-            self.det_corr.append(row_detc)
-            self.sums.append(row_sum)
-            self.sums_corr.append(row_sumc)
+        # self.xrf_data = numpy.array(self.xrf_data)
 
-            self.realtime.append(xm_tr)
-            self.livetime.append(xm_tr)
-            self.dt_factor.append(xmicr*1.0/(1.e-10+xmocr))
-            self.xrf_data.append(xmdat)
-            corr = ((xmicr*1.0/(1.e-10+xmocr))*xmdat.transpose((2,0,1))).transpose(1,2,0)
-            self.xrf_corr.append(corr)
+        # self.det = numpy.array(self.det)
+        #self.sums = numpy.array(self.sums)
 
-        print 'Done reading.. ', len(self.xrf_data)
-        t0 = time.time()
-        self.xrf_data = numpy.array(self.xrf_data)
-        print ' .. converted to numpy array '
-        self.xrf_corr = numpy.array(self.xrf_corr)
-        self.realtime = numpy.array(self.realtime)
-        self.livetime = numpy.array(self.livetime)
-        self.dt_factor = numpy.array(self.dt_factor)
-
-        self.det = numpy.array(self.det)
-        self.sums = numpy.array(self.sums)
-        self.det_corr = numpy.array(self.det_corr)
-        self.sums_corr = numpy.array(self.sums_corr)
+        #self.det_corr = numpy.array(self.det_corr)
+        #self.sums_corr = numpy.array(self.sums_corr)
 
         #print 'FULL ', self.xrf_data.shape
         #self.merge      = self.xrf_data[:,:,0,:]*1.0
