@@ -319,7 +319,10 @@ class TrajectoryScan(object):
             self.PV(pos1).put(p1_next, wait=False)
 
             if USE_MONO_CONTROL:
-                self.mono_control.CheckMonoPitch()
+                try:
+                    self.mono_control.CheckMonoPitch()
+                except:
+                    pass
 
             # note:
             #  First WriteRowData will write data from XPS and struck,
