@@ -7,7 +7,7 @@ from threading import Thread
 
 from .utils import debugtime, new_filename, nativepath, winpath, fix_filename, increment_filename
 
-from struck import Struck
+from epics.devices.struck import Struck
 from xmap import MultiXMAP
 
 from .xps.xps_trajectory import XPSTrajectory
@@ -19,7 +19,7 @@ from escan_writer import EscanWriter
 
 USE_XMAP = True
 USE_STRUCK = True
-USE_MONO_CONTROL = False # True
+USE_MONO_CONTROL = True
 
 # this should go into the configFile, but then again,
 # mono_control is highly specialized to a setup.....
@@ -460,7 +460,6 @@ class TrajectoryScan(object):
 
             # print 'would turn off xmap here' # self.xmap.stop()
             # self.xmap.FileCaptureOff()
-
 
         if USE_STRUCK:
             self.struck.stop()
