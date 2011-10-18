@@ -125,8 +125,8 @@ def read_xmap_netcdf(fname, verbose=False):
             t_times = aslong(dat[:npix,32:64]).reshape(npix,4,4)
             p1 = npix_total - npix
             p2 = npix_total
-            xmapdat.realTime[p1:p2,:]     = t_times[:,:,0] * clocktick
-            xmapdat.liveTime[p1:p2,:]     = t_times[:,:,1] * clocktick
+            xmapdat.realTime[p1:p2,:]     = t_times[:,:,0]
+            xmapdat.liveTime[p1:p2,:]     = t_times[:,:,1]
             xmapdat.inputCounts[p1:p2,:]  = t_times[:,:,2]
             xmapdat.outputCounts[p1:p2,:] = t_times[:,:,3]
 
@@ -139,8 +139,8 @@ def read_xmap_netcdf(fname, verbose=False):
     t2 = time.time()
     xmapdat.numPixels = npix_total
     xmapdat.data = xmapdat.data[:npix_total]
-    xmapdat.realTime = xmapdat.realTime[:npix_total]
-    xmapdat.liveTime = xmapdat.liveTime[:npix_total]
+    xmapdat.realTime = clocktick * xmapdat.realTime[:npix_total]
+    xmapdat.liveTime = clocktick * xmapdat.liveTime[:npix_total]
     xmapdat.inputCounts  = xmapdat.inputCounts[:npix_total]
     xmapdat.outputCounts = xmapdat.outputCounts[:npix_total]
     if verbose:
