@@ -410,6 +410,7 @@ class TrajectoryScan(object):
         scan_thread.join()  # max(0.1, scantime-5.0))
 
         while scan_thread.isAlive() and time.time()-t0 < scantime+5.0:
+            epics.poll()
             time.sleep(0.002)
         self.dtime.add('ExecTraj: Scan Thread complete.')
         time.sleep(0.002)
@@ -551,7 +552,7 @@ class TrajectoryScan(object):
         # self.dtime.show()
 
     def mainloop(self):
-        self.write('FastMap collector starting up....')
+        self.write('FastMap collector starting up...  %s' % (time.ctime()))
         self.mapper.ClearAbort()
         self.mapper.setTime()
         self.mapper.message = 'Ready to Start Map'
