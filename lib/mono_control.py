@@ -1,4 +1,7 @@
 #!/usr/bin/python 
+##
+## Very GSE specific mono feedback 
+##
 import epics
 import time
 from utils import debugtime
