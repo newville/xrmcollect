@@ -44,8 +44,6 @@ class H5Writer(object):
 
         self.last_row = 0
 
-        self.scan_regions= []
-
 
         self.pos         = []
         self.det         = []
@@ -62,128 +60,18 @@ class H5Writer(object):
         self.sums_corr  = []
         self.sums_names = []
         self.sums_list  = []
-        self.dt_factor  = []
 
-        self.xrf_data     = []
-        self.xrf_corr     = []
 
-        self.xrf_sum      = []
         self.xrf_energies = []
         self.xrf_header = ''
         self.xrf_dict   = {}
-        self.merge  = None
-        self.merge_corr  = None
+
         self.roi_desc  = []
         self.roi_addr  = []
         self.roi_llim  = []
         self.roi_hlim  = []
         self.xvals  = []
         self.yvals = []
-
-    def write_h5file(self, h5name=None):
-        if h5name is None:
-            h5name = self.filename + '.h5'
-
-        try:
-            fh = h5py.File(h5name, 'w')
-            print 'saving hdf5 file %s' % h5name
-        except:
-            print 'write_h5file error??? ', h5name
-
-        def add_group(group, name, data=None, attrs=None):
-            g = group.create_group(name)
-            if isinstance(dat, dict):
-                for key, val in data.items():
-                    g[key] = val
-            if isinstance(attrs, dict):
-                for key, val in attrs.items():
-                    g.attrs[key] = val
-            return g
-
-        def add_data(group, name, data, attrs=None, **kws):
-            # print 'create group in HDF file ', name
-            kwargs = {'compression':4}
-            kwargs.update(kws)
-            # print '   add data ', name, group
-            d = group.create_dataset(name,data=data, **kwargs)
-            if isinstance(attrs,dict):
-                for key,val in attrs.items():
-                    d.attrs[key] = val
-
-            return d
-
-
-        mainattrs = copy.deepcopy(self.h5_attrs)
-        mainattrs.update({'Collection Time': self.start_time})
-
-        maingroup = add_group(fh,'data', attrs=mainattrs)
-
-        g = add_group(maingroup,'environ')
-        # add_data(g,'desc',  self.env_desc)
-        # add_data(g,'addr',  self.env_addr)
-        # add_data(g,'value', self.env_val)
-
-        roigroup = add_group(maingroup,'rois')
-        add_data(roigroup, 'labels',  self.roi_desc)
-        add_data(roigroup, 'lo_limit',self.roi_llim)
-        add_data(roigroup, 'hi_limit',self.roi_hlim)
-
-
-        scan_attrs = {'dimension':self.dimension,
-                      'stop_time':self.stop_time,
-                      'start_time':self.start_time,
-                      'scan_prefix': 'FAST',
-                      'correct_deadtime': 'True'}
-
-        scangroup = add_group(maingroup,'roi_scan', attrs=scan_attrs)
-
-        add_data(scangroup,'det',            self.det)
-        add_data(scangroup,'det_corrected',  self.det_corr)
-        add_data(scangroup,'det_desc',       self.det_desc)
-        add_data(scangroup,'det_addr',       self.det_addr)
-
-        add_data(scangroup,'sums',           self.sums)
-        add_data(scangroup,'sums_corrected', self.sums_corr)
-        add_data(scangroup,'sums_desc',      self.sums_desc)
-
-        add_data(scangroup,'x', self.xvals,     attrs={'desc':self.xdesc, 'addr':self.xaddr})
-
-        if self.dimension  > 1:
-            add_data(scangroup,'y', self.yvals, attrs={'desc':self.ydesc, 'addr':self.yaddr})
-
-        add_data(scangroup,'user_titles', self.user_titles)
-
-        en_attrs = {'units':'keV'}
-
-        xrf_shape = self.xrf_data.shape
-        gattrs = {'dimension':self.dimension,'nmca':xrf_shape[-1]}
-
-
-        gattrs.update({'ndetectors':xrf_shape[-2]})
-        gxrf = add_group(maingroup,'full_xrf',attrs=gattrs)
-        add_data(gxrf,'dt_factor', self.dt_factor)
-        add_data(gxrf,'realtime', self.realtime)
-        add_data(gxrf,'livetime', self.livetime)
-
-        #add_data(g, 'header', self.xrf_header)
-        add_data(gxrf, 'data',   self.xrf_data)
-        #add_data(gxrf, 'data_corrected',   self.xrf_corr)
-        add_data(gxrf, 'energies', self.xrf_energies, attrs=en_attrs)
-
-        fh.close()
-        return None
-
-        #g = add_group(maingroup,'merged_xrf',attrs=gattrs)
-        #add_data(g, 'data', self.merge)
-        #add_data(g, 'data_corrected', self.merge_corr)
-        #add_data(g, 'energies',  self.xrf_energies[0,:], attrs=en_attrs)
-
-        #print self.merge.shape, self.merge.dtype
-        #print self.merge_corr.shape, self.merge_corr.dtype
-
-        #print self.xrf_data.shape, self.xrf_data.dtype
-        #print self.xrf_corr.shape, self.xrf_corr.dtype
-
 
     def ReadMaster(self):
         self.rowdata = None
@@ -203,13 +91,13 @@ class H5Writer(object):
             self.rowdata = rows
             self.start_time = self.master_header[0][6:]
 
-    def add_group(self, group,name,dat=None,attrs=None):
+    def add_group(self, group, name, dat=None, attrs=None):
         g = group.create_group(name)
-        if isinstance(dat,dict):
-            for key,val in dat.items():
+        if isinstance(dat, dict):
+            for key, val in dat.items():
                 g[key] = val
-        if isinstance(attrs,dict):
-            for key,val in attrs.items():
+        if isinstance(attrs, dict):
+            for key, val in attrs.items():
                 g.attrs[key] = val
         return g
 
@@ -218,9 +106,9 @@ class H5Writer(object):
         kwargs = {'compression':4}
         kwargs.update(kws)
         # print '   add data ', name, group
-        d = group.create_dataset(name,data=data, **kwargs)
-        if isinstance(attrs,dict):
-            for key,val in attrs.items():
+        d = group.create_dataset(name, data=data, **kwargs)
+        if isinstance(attrs, dict):
+            for key, val in attrs.items():
                 d.attrs[key] = val
         return d
 
@@ -311,6 +199,9 @@ class H5Writer(object):
         # self.add_data(pos, 'positions', self.yvals)
 
         roiscan = self.add_group(h5root, 'roi_scan')
+        gxrf = self.add_group(h5root, 'xrf_spectra')
+        # , attrs=gattrs)
+
         #         add_data(roiscan,'det',       self.det)
         #         add_data(roiscan,'det_corr',  self.det_corr)
         #         add_data(roiscan,'det_desc',  self.det_desc)
@@ -326,7 +217,7 @@ class H5Writer(object):
         #gattrs = {'dimension':self.dimension,'nmca':xrf_shape[-1]}
         #gattrs.update({'ndetectors':xrf_shape[-2]})
 
-        gxrf = self.add_group(h5root, 'xrf_spectra') # , attrs=gattrs)
+
         #add_data(gxrf,'dt_factor', self.dt_factor)
         #add_data(gxrf,'realtime', self.realtime)
         #add_data(gxrf,'livetime', self.livetime)
@@ -384,7 +275,7 @@ class H5Writer(object):
 
             gnpts, ngather  = gdata.shape
             snpts, nscalers = sdata.shape
-
+            
             xnpts = xmdat.shape[0]
             npts = min(snpts,gnpts,xnpts)
             npts = gnpts-1
@@ -456,11 +347,11 @@ class H5Writer(object):
             ltime[irow,:,:] = (xm_tl).astype('float32')
 
             dtcorr[irow,:,:] = xm_ic.astype('float32')
-            #dt.add('add rtime, ltime, corr')
+            dt.add('add rtime, ltime, corr')
             xdata[irow,:,:,:] = xmdat
-            #dt.add('add data')
-            #dt.show()
-            # print sdata.shape
+            dt.add('add data')
+            dt.show()
+            print sdata.shape
             rdat = list(sdata.transpose())
             raw, cor, sraw, scor = rdat, rdat[:], rdat[:], rdat[:]
             for slices in self.roi_slices:
