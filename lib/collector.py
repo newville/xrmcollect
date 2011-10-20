@@ -5,23 +5,23 @@ import numpy
 import epics
 from threading import Thread
 
+from epics.devices.struck import Struck
+
 from .utils import debugtime
-from .io import nativepath, fix_filename, increment_filename
-
-from .xps.xps_trajectory import XPSTrajectory
+from .io.file_utils import nativepath, fix_filename, increment_filename
 from .io.escan_writer import EscanWriter
-
+from .xps.xps_trajectory import XPSTrajectory
 from .xmap import MultiXMAP
 
 from mapper import mapper
 from config import FastMapConfig
 from mono_control import mono_control
 
-from struck import Struck
 
 USE_XMAP = True
 USE_STRUCK = True
 USE_MONO_CONTROL = True
+
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -320,8 +320,11 @@ class TrajectoryScan(object):
                 self.PV(pos2).put(start2 + irow*step2, wait=False)
             self.PV(pos1).put(p1_next, wait=False)
 
-            if self.mono_control is not None:
-                self.mono_control.CheckMonoPitch()
+            if USE_MONO_CONTROL:
+                try:
+                    self.mono_control.CheckMonoPitch()
+                except:
+                    pass
 
             # note:
             #  First WriteRowData will write data from XPS and struck,
@@ -463,7 +466,6 @@ class TrajectoryScan(object):
 
             # print 'would turn off xmap here' # self.xmap.stop()
             # self.xmap.FileCaptureOff()
-
 
         if USE_STRUCK:
             self.struck.stop()

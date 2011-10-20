@@ -4,7 +4,7 @@ import time
 import epics
 import numpy
 from ..utils import OrderedDict, debugtime
-
+MAX_ROIS = 32
 class DXP(epics.Device):
     _attrs = ('PreampGain','MaxEnergy','ADCPercentRule','BaselineCutPercent',
               'BaselineThreshold','BaselineFilterLength','BaselineCutEnable',
@@ -15,7 +15,7 @@ class DXP(epics.Device):
 
     def __init__(self,prefix,mca=1):
         self._prefix = "%sdxp%i" % (prefix, mca)
-        self._maxrois = 16
+        self._maxrois = MAX_ROIS
 
         epics.Device.__init__(self, self._prefix, delim=':')
         epics.poll()
@@ -29,7 +29,7 @@ class MCA(epics.Device):
 
     def __init__(self,prefix,mca=1):
         self._prefix = "%smca%i" % (prefix, mca)
-        self._maxrois = 16
+        self._maxrois = MAX_ROIS
         attrs = list(self._attrs)
         for i in range(self._maxrois):
             attrs.extend(['R%i'%i, 'R%iN' %i, 'R%iNM' %i,
