@@ -44,9 +44,8 @@ class H5Writer(object):
 
         self.last_row = 0
 
-
-        self.pos         = []
-        self.det         = []
+        self.pos      = []
+        self.det      = []
         self.det_corr = []
         self.realtime = []
         self.livetime = []
@@ -60,7 +59,6 @@ class H5Writer(object):
         self.sums_corr  = []
         self.sums_names = []
         self.sums_list  = []
-
 
         self.xrf_energies = []
         self.xrf_header = ''
@@ -92,6 +90,7 @@ class H5Writer(object):
             self.start_time = self.master_header[0][6:]
 
     def add_group(self, group, name, dat=None, attrs=None):
+        """ add an hdf5 group"""
         g = group.create_group(name)
         if isinstance(dat, dict):
             for key, val in dat.items():
@@ -102,10 +101,9 @@ class H5Writer(object):
         return g
 
     def add_data(self, group, name, data, attrs=None, **kws):
-        # print 'create group in HDF file ', name
+        """ creata an hdf5 dataset"""
         kwargs = {'compression':4}
         kwargs.update(kws)
-        # print '   add data ', name, group
         d = group.create_dataset(name, data=data, **kwargs)
         if isinstance(attrs, dict):
             for key, val in attrs.items():
@@ -123,7 +121,7 @@ class H5Writer(object):
 
     def add_rois(self, group, mca_prefix):
         "add ROI data"
-        roidata, calib = readROIFile(os.path.join(self.folder,self.ROIFile))
+        roidata, calib, dxp = readROIFile(os.path.join(self.folder, self.ROIFile))
         roi_desc, roi_addr, roi_llim, roi_hlim = [], [], [], []
         roi_slices = []
         for iroi, label, roidat in roidata:
@@ -135,16 +133,26 @@ class H5Writer(object):
         roi_llim = numpy.array(roi_llim)
         roi_hlim = numpy.array(roi_hlim)
 
-        grp = self.add_group(group,'rois')
+        grp = self.add_group(group, 'rois')
+
         self.add_data(grp, 'labels',  roi_desc)
         self.add_data(grp, 'addrs',  roi_addr)
         self.add_data(grp, 'lo_limit', roi_llim)
         self.add_data(grp, 'hi_limit', roi_hlim)
+        grp = self.add_group(group, 'calibration')
+        for key, val in calib.items():
+            self.add_data(grp, key, val)
+
+        grp = self.add_group(group, 'dxp_settings')
+        for key, val in dxp.items():
+            self.add_data(grp, key, val)
+
         self.roi_desc = roi_desc
         self.roi_addr = roi_addr
         self.roi_slices = roi_slices
         self.calib = calib
 
+        sys.exit()
 
     def begin_h5file(self):
         """open and start writing to h5file:
@@ -275,7 +283,7 @@ class H5Writer(object):
 
             gnpts, ngather  = gdata.shape
             snpts, nscalers = sdata.shape
-            
+
             xnpts = xmdat.shape[0]
             npts = min(snpts,gnpts,xnpts)
             npts = gnpts-1

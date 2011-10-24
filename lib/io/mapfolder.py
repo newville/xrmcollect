@@ -48,7 +48,6 @@ def parseEnviron(text):
         env_addr.append(addr)
     return env_desc, env_addr, env_vals
 
-
 def readScanConfig(folder):
     sfiles = [os.path.join(folder, 'Scan.ini'),
               os.path.join(folder, 'Scan.cnf')]
@@ -75,11 +74,6 @@ def readROIFile(hfile):
     cp =  ConfigParser()
     cp.read(hfile)
     output = []
-    try:
-        rois = cp.options('rois')
-    except:
-        return [], []
-
     for a in cp.options('rois'):
         if a.lower().startswith('roi'):
             iroi = int(a[3:])
@@ -90,10 +84,21 @@ def readROIFile(hfile):
             output.append((iroi, name.strip(), dat))
     roidata = sorted(output)
     calib = {}
-    try:
-        caldat = cp.options('calibration')
-        for attr in ('offset', 'slope', 'quad'):
-            calib[attr] = [float(x) for x in cp.get('calibration', attr).split()]
-    except:
-        calib = {}
-    return roidata, calib
+
+    caldat = cp.options('calibration')
+    for attr in ('offset', 'slope', 'quad'):
+        calib[attr] = [float(x) for x in cp.get('calibration', attr).split()]
+    dxp = {}
+    ndet = len(calib['offset'])
+    for attr in cp.options('dxp'):
+        tmpdat = [x for x in cp.get('dxp', attr).split()]
+        if len(tmpdat) == 2*ndet:
+            tmpdat = ['%s %s' % (i, j) for i, j in zip(tmpdat[::2], tmpdat[1::2])]
+        try:
+            dxp[attr] = [int(x) for x in tmpdat]
+        except ValueError:
+            try:
+                dxp[attr] = [float(x) for x in tmpdat]
+            except ValueError:
+                dxp[attr] = tmpdat
+    return roidata, calib, dxp

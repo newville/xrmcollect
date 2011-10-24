@@ -106,9 +106,10 @@ class MultiXMAP(epics.Device):
 
         add('[dxp]')
         for a in self.dxps[0]._attrs:
-            vals = [str(dxp.get(a, as_string=True)) for dxp in self.dxps]
+            vals = [str(dxp.get(a, as_string=True)).replace(' ','_') for dxp in self.dxps]
             add("%s = %s" % (a, ' '.join(vals)))
         return buff
+
 
     def Write_CurrentConfig(self, filename=None):
         d = debugtime()

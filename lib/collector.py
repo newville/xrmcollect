@@ -57,7 +57,7 @@ class TrajectoryScan(object):
         if USE_MONO_CONTROL and 'mono' in conf.get('general'):
             mono_pref = conf.get('general', 'mono')
             self.mono_control = mono_control(mono_pref)
-        
+
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
         self.scan_t0  = time.time()
@@ -423,7 +423,7 @@ class TrajectoryScan(object):
         try:
             new_lines = self.escan_saver.process()
         except:
-            new_lines = 0    
+            new_lines = 0
         if new_lines < 0:
             return
 
