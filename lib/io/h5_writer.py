@@ -18,7 +18,7 @@ from ..config import FastMapConfig
 from file_utils import nativepath
 from mapfolder import (readASCII, readMasterFile,
                        readEnvironFile, parseEnviron,
-                       readScanConfig, readROIFile)
+                       readROIFile)
 
 off_struck = 0
 off_xmap   = 0
@@ -46,28 +46,14 @@ class H5Writer(object):
 
         self.pos      = []
         self.det      = []
-        self.det_corr = []
-        self.realtime = []
-        self.livetime = []
-
-        self.pos_desc    = []
-        self.pos_addr    = []
-        self.det_desc    = []
-        self.det_addr    = []
-
         self.sums       = []
-        self.sums_corr  = []
-        self.sums_names = []
         self.sums_list  = []
 
         self.xrf_energies = []
-        self.xrf_header = ''
-        self.xrf_dict   = {}
 
         self.roi_desc  = []
         self.roi_addr  = []
-        self.roi_llim  = []
-        self.roi_hlim  = []
+
         self.xvals  = []
         self.yvals = []
 
@@ -112,38 +98,45 @@ class H5Writer(object):
 
     def add_environ(self, group):
         "add environmental data"
-        envdat = readEnvironFile(os.path.join(self.folder, self.EnvFile))
-        env_desc, env_addr, env_val = parseEnviron(envdat)
-        grp = self.add_group(group, 'environ')
-        self.add_data(grp, 'desc',  env_desc)
-        self.add_data(grp, 'addr',  env_addr)
-        self.add_data(grp, 'value', env_val)
 
-    def add_rois(self, group, mca_prefix):
-        "add ROI data"
+    def add_config(self, root, config):
+        "add ROI, DXP Settings, and Config data"
+        group = self.add_group(root, 'config')
+
+       
+        xps_attrs =  {'Type': 'Newport XPS',
+                      'Mode': 'XYGroup'}
+            
+        for name, sect in (('scan', 'scan'),
+                           ('general', 'general'),
+                           ('positioners', 'slow_positioners'),
+                           ('motor_controller', 'xps')):
+
+            grp = self.add_group(group, name)
+            for key, val in config[sect].items():
+                grp.create_dataset(key, data=val)
+
         roidata, calib, dxp = readROIFile(os.path.join(self.folder, self.ROIFile))
-        roi_desc, roi_addr, roi_llim, roi_hlim = [], [], [], []
+        roi_desc, roi_addr, roi_lim = [], [], []
         roi_slices = []
         for iroi, label, roidat in roidata:
             roi_desc.append(label)
-            roi_addr.append("%smca%%i.R%i" % (mca_prefix, iroi))
-            roi_llim.append([roidat[i][0] for i in range(4)])
-            roi_hlim.append([roidat[i][1] for i in range(4)])
+            roi_addr.append("%smca%%i.R%i" % (config['general']['xmap'], iroi))
+            roi_lim.append([roidat[i] for i in range(4)])
             roi_slices.append([slice(roidat[i][0], roidat[i][1]) for i in range(4)])
-        roi_llim = numpy.array(roi_llim)
-        roi_hlim = numpy.array(roi_hlim)
+        roi_lim = numpy.array(roi_lim)
 
         grp = self.add_group(group, 'rois')
 
-        self.add_data(grp, 'labels',  roi_desc)
-        self.add_data(grp, 'addrs',  roi_addr)
-        self.add_data(grp, 'lo_limit', roi_llim)
-        self.add_data(grp, 'hi_limit', roi_hlim)
-        grp = self.add_group(group, 'calibration')
+        self.add_data(grp, 'name',     roi_desc)
+        self.add_data(grp, 'address',  roi_addr)
+        self.add_data(grp, 'limits',   roi_lim)
+
+        grp = self.add_group(group, 'mca_calib')
         for key, val in calib.items():
             self.add_data(grp, key, val)
 
-        grp = self.add_group(group, 'dxp_settings')
+        grp = self.add_group(group, 'mca_settings')
         for key, val in dxp.items():
             self.add_data(grp, key, val)
 
@@ -152,7 +145,13 @@ class H5Writer(object):
         self.roi_slices = roi_slices
         self.calib = calib
 
-        sys.exit()
+        # add env data
+        envdat = readEnvironFile(os.path.join(self.folder, self.EnvFile))
+        env_desc, env_addr, env_val = parseEnviron(envdat)
+        grp = self.add_group(group, 'environ')
+        self.add_data(grp, 'name',     env_desc)
+        self.add_data(grp, 'address',  env_addr)
+        self.add_data(grp, 'value',     env_val)
 
     def begin_h5file(self):
         """open and start writing to h5file:
@@ -160,13 +159,15 @@ class H5Writer(object):
         if self.h5file is not None or self.folder is None:
             return
 
-        fastmap = FastMapConfig()
-        slow_pos = fastmap.config['slow_positioners']
-        fast_pos = fastmap.config['fast_positioners']
+        cfile = FastMapConfig()
+        cfile.Read(os.path.join(self.folder, 'Scan.ini'))
 
-        scanconf, generalconf, start_time = readScanConfig(self.folder)
-
+        mapconf = cfile.config
+        slow_pos = mapconf['slow_positioners']
+        fast_pos = mapconf['fast_positioners']
+        scanconf = mapconf['scan']
         dimension = scanconf['dimension']
+
         user_titles = scanconf['comments'].split('\n')
         filename = scanconf['filename']
 
@@ -185,7 +186,6 @@ class H5Writer(object):
         #
         h5name = filename + '.h5'
         fh = self.h5file = h5py.File(h5name, 'w')
-        print 'saving hdf5 file %s' % h5name
 
         attrs = {'Dimension':dimension,
                  'Stop_Time':self.stop_time,
@@ -193,45 +193,10 @@ class H5Writer(object):
         attrs.update(self.h5_attrs)
 
         h5root = self.h5root = self.add_group(fh, 'xrf_map', attrs=attrs)
-        self.add_data(h5root, 'user_titles', user_titles)
+        self.add_config(h5root, mapconf)
 
-        self.add_environ(h5root)
-        self.add_rois(h5root, generalconf['xmap'])
-
-        pos = self.add_group(h5root, 'positioners',
-                             attrs = {'Dimension': dimension})
-
-        self.add_data(pos, 'names', pos_desc)
-        self.add_data(pos, 'addrs', pos_addr)
-
-        # self.add_data(pos, 'positions', self.yvals)
-
-        roiscan = self.add_group(h5root, 'roi_scan')
-        gxrf = self.add_group(h5root, 'xrf_spectra')
-        # , attrs=gattrs)
-
-        #         add_data(roiscan,'det',       self.det)
-        #         add_data(roiscan,'det_corr',  self.det_corr)
-        #         add_data(roiscan,'det_desc',  self.det_desc)
-        #         add_data(roiscan,'det_addr',  self.det_addr)
-        #
-        #         add_data(roiscan,'sums',       self.sums)
-        #         add_data(roiscan,'sums_corr',  self.sums_corr)
-        #         add_data(roiscan,'sums_desc',  self.sums_desc)
-
-
-        #en_attrs = {'units':'keV'}
-        #xrf_shape = self.xrf_data.shape
-        #gattrs = {'dimension':self.dimension,'nmca':xrf_shape[-1]}
-        #gattrs.update({'ndetectors':xrf_shape[-2]})
-
-
-        #add_data(gxrf,'dt_factor', self.dt_factor)
-        #add_data(gxrf,'realtime', self.realtime)
-        #add_data(gxrf,'livetime', self.livetime)
-
-        #add_data(gxrf, 'data',   self.xrf_data)
-        #add_data(gxrf, 'energies', self.xrf_energies, attrs=en_attrs)
+        self.add_group(h5root, 'scan')
+        self.add_group(h5root, 'xrf_spectra')
 
 
     def process(self, maxrow=None):
@@ -244,7 +209,7 @@ class H5Writer(object):
         if maxrow is None:
             maxrow = len(self.rowdata)
 
-        roiscan = self.h5root['roi_scan']
+        roiscan = self.h5root['scan']
         while self.last_row <  maxrow:
             irow = self.last_row
             dt = debugtime()
@@ -265,7 +230,7 @@ class H5Writer(object):
                     atime = time.ctime(os.stat(os.path.join(self.folder,
                                                             xmapfile)).st_ctime)
                     xmfile = os.path.join(self.folder,xmapfile)
-                    xmapdat     = read_xmap_netcdf(xmfile, verbose=False)
+                    xmapdat = read_xmap_netcdf(xmfile, verbose=False)
                 except:
                     print 'xmap data failed to read'
                     sys.exit()
@@ -300,17 +265,16 @@ class H5Writer(object):
                 xmdat = xmdat[::-1]
                 dt.add('reversed data ')
 
-            xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points]
+            xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points] 
 
-            roiscan = self.h5root['roi_scan']
-            pos     = self.h5root['positioners']
-            xrf     = self.h5root['xrf_spectra']
+            scan = self.h5root['scan']
+            xrf  = self.h5root['xrf_spectra']
 
             if irow == 0:
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
-                sums_desc = self.det_desc[:]
-
+                sums_desc = det_desc[:]
+                
                 off, slope = self.calib['offset'], self.calib['slope']
                 xnpts, nchan, nelem = xmdat.shape
 
@@ -325,9 +289,11 @@ class H5Writer(object):
                     det_desc.extend(["%s (mca%i)" % (desc, i+1) for i in range(nchan)])
                     sums_desc.append(desc)
 
-                self.add_data(roiscan, 'det_addr',   det_addr)
-                self.add_data(roiscan, 'det_desc',   det_desc)
-                self.add_data(roiscan, 'sums_desc',  sums_desc)
+                self.add_data(group, 'det_name',   det_desc)
+                self.add_data(group, 'det_address',  det_addr)
+                self.add_data(group, 'sum_name',    sums_desc)
+
+
 
                 xrf_energies = xrf.create_dataset('energies', (nchan, nelem), numpy.float32,
                                                   compression=2)
@@ -371,7 +337,7 @@ class H5Writer(object):
                 cor.extend(icor)
                 sraw.extend(sum(iraw))
                 scor.extend(sum(icor))
-
+                
         # self.xrf_data = numpy.array(self.xrf_data)
 
         # self.det = numpy.array(self.det)
