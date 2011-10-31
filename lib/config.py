@@ -43,6 +43,8 @@ basedir = //cars5/Data/xas_user/June2011/_Setup
 scandir = Scan00001
 envfile = //cars5/Data/xas_user/config/XRM_XMAP_PVS_IDE.DAT
 [xps]
+type = NewportXPS
+mode = XYGroup
 host = 164.54.160.180
 user   = Administrator
 passwd = Administrator
