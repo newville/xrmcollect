@@ -103,10 +103,10 @@ class H5Writer(object):
         "add ROI, DXP Settings, and Config data"
         group = self.add_group(root, 'config')
 
-       
+
         xps_attrs =  {'Type': 'Newport XPS',
                       'Mode': 'XYGroup'}
-            
+
         for name, sect in (('scan', 'scan'),
                            ('general', 'general'),
                            ('positioners', 'slow_positioners'),
@@ -265,7 +265,7 @@ class H5Writer(object):
                 xmdat = xmdat[::-1]
                 dt.add('reversed data ')
 
-            xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points] 
+            xvals = [(gdata[i, self.ixaddr] + gdata[i-1, self.ixaddr])/2.0 for i in points]
 
             scan = self.h5root['scan']
             xrf  = self.h5root['xrf_spectra']
@@ -274,7 +274,7 @@ class H5Writer(object):
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
                 sums_desc = det_desc[:]
-                
+
                 off, slope = self.calib['offset'], self.calib['slope']
                 xnpts, nchan, nelem = xmdat.shape
 
@@ -289,9 +289,9 @@ class H5Writer(object):
                     det_desc.extend(["%s (mca%i)" % (desc, i+1) for i in range(nchan)])
                     sums_desc.append(desc)
 
-                self.add_data(group, 'det_name',   det_desc)
-                self.add_data(group, 'det_address',  det_addr)
-                self.add_data(group, 'sum_name',    sums_desc)
+                self.add_data(scan, 'det_name',   det_desc)
+                self.add_data(scan, 'det_address',  det_addr)
+                self.add_data(scan, 'sum_name',    sums_desc)
 
 
 
@@ -337,7 +337,7 @@ class H5Writer(object):
                 cor.extend(icor)
                 sraw.extend(sum(iraw))
                 scor.extend(sum(icor))
-                
+
         # self.xrf_data = numpy.array(self.xrf_data)
 
         # self.det = numpy.array(self.det)
