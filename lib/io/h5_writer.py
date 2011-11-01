@@ -100,7 +100,7 @@ class H5Writer(object):
                            ('positioners', 'slow_positioners'),
                            ('motor_controller', 'xps')):
             grp = self.add_group(group, name)
-            
+
             for key, val in config[sect].items():
                 grp.create_dataset(key, data=val)
 
@@ -226,7 +226,7 @@ class H5Writer(object):
                 time.sleep(0.03)
             if atime < 0:
                 return 0
-            # 
+            #
             dt.add('read xmap data')
             xmdat = xmapdat.data[1:]
             xm_ic = xmapdat.inputCounts[1:]/(1.e-12+xmapdat.outputCounts[1:])
@@ -252,7 +252,7 @@ class H5Writer(object):
             ix = self.ixaddr
             posvals = [numpy.array([(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]),
                        numpy.array([float(yval) for i in points])]
-           
+
             scan = self.h5root['scan']
             xrf  = self.h5root['xrf_spectra']
 
@@ -263,7 +263,7 @@ class H5Writer(object):
                 off, slope = self.calib['offset'], self.calib['slope']
                 xnpts, nchan, nelem = xmdat.shape
 
-                print 'Row 0 : ',  off, slope, snpts, nscalers, xnpts, nchan, nelem
+                # print 'Row 0 : ',  off, slope, snpts, nscalers, xnpts, nchan, nelem
 
                 enx = [(off[i] + slope[i]*numpy.arange(nelem)) for i in range(nchan)]
                 self.add_data(xrf, 'energies', numpy.array(enx, dtype=numpy.float32))
@@ -278,7 +278,7 @@ class H5Writer(object):
                 for idet, addr in enumerate(det_desc):
                     if '(mca' in addr:
                         addr = addr.split('(mca')[0].strip()
-                  
+
                     if addr not in sums_map:
                         sums_map[addr] = []
                         sums_desc.append(addr)
@@ -298,7 +298,7 @@ class H5Writer(object):
                 self.add_data(scan, 'sum_name',    sums_desc)
                 self.add_data(scan, 'sum_list',    sums_list)
 
-                ndet = len(det_desc)               
+                ndet = len(det_desc)
                 for pname in ('MCA Real Time', 'MCA Live Time'):
                     self.pos_desc.append(pname)
                     self.pos_addr.append('')
@@ -308,17 +308,17 @@ class H5Writer(object):
 
                 det_raw = scan.create_dataset('det_raw', (2, npts, ndet), numpy.long,
                                               compression=2)
-                
+
                 det_cor = scan.create_dataset('det_dtcorr', (2, npts, ndet), numpy.float32,
                                               compression=2)
-                # sum_raw = scan.create_dataset('sum_raw', (2, npts, nsum), numpy.long,
-                #                               compression=2)
-                # sum_cor = scan.create_dataset('sum_dtcorr', (2, npts, nsum), numpy.float32,
-                #                              compression=2)
-                
+                sum_raw = scan.create_dataset('sum_raw', (2, npts, nsum), numpy.long,
+                                              compression=2)
+                sum_cor = scan.create_dataset('sum_dtcorr', (2, npts, nsum), numpy.float32,
+                                              compression=2)
+
                 pos = scan.create_dataset('pos', (2, npts, npos), numpy.float32,
                                             compression=2)
-                
+
                 rtime = xrf.create_dataset('realtime', (2, npts, nchan), numpy.int,
                                            maxshape=(None, npts, nchan), compression=2)
                 ltime = xrf.create_dataset('livetime', (2, npts, nchan), numpy.int,
@@ -350,13 +350,13 @@ class H5Writer(object):
                     det_cor = scan['det_dtcorr']
                     det_cor.resize((nrow, npts, ndet))
 
-                    # sum_raw = scan['sum_raw']
-                    # nsum = sum_raw.shape[2]
-                    # sum_raw.resize((nrow, npts, nsum))
-                    # sum_cor = scan['sum_dtcorr']
-                    # sum_cor.resize((nrow, npts, nsum))
+                    sum_raw = scan['sum_raw']
+                    nsum = sum_raw.shape[2]
+                    sum_raw.resize((nrow, npts, nsum))
+                    sum_cor = scan['sum_dtcorr']
+                    sum_cor.resize((nrow, npts, nsum))
 
-                    
+
             rtime[irow,:,:] = xm_tr
             ltime[irow,:,:] = xm_tl
 
@@ -366,27 +366,27 @@ class H5Writer(object):
             dt.add('add xrf data')
             draw = list(sdata.transpose())
             dcor = draw[:]
-            # sraw = draw[:]
-            # scor = draw[:]
+            sraw = draw[:]
+            scor = draw[:]
             for slices in self.roi_slices:
                 iraw = [xmdat[:, i, slices[i]].sum(axis=1) for i in range(nchan)]
                 icor = [xmdat[:, i, slices[i]].sum(axis=1)*xm_ic[:, i]  for i in range(nchan)]
                 draw.extend(iraw)
                 dcor.extend(icor)
-                # sraw.extend(sum(iraw))
-                # scor.extend(sum(icor))                
+                sraw.append(numpy.array(iraw).sum(axis=0))
+                scor.append(numpy.array(icor).sum(axis=0))
 
             det_raw[irow,:,:] = numpy.array(draw).transpose()
             det_cor[irow,:,:] = numpy.array(dcor).transpose()
-            # sum_raw[irow,:,:] = numpy.array(sraw).transpose()
-            # sum_cor[irow,:,:] = numpy.array(scor).transpose()
+            sum_raw[irow,:,:] = numpy.array(sraw).transpose()
+            sum_cor[irow,:,:] = numpy.array(scor).transpose()
             dt.add('add det data')
-            
+
             posvals.append(xm_tr.sum(axis=1).astype('float32') / nchan)
             posvals.append(xm_tl.sum(axis=1).astype('float32') / nchan)
             pos[irow,:,:] = numpy.array(posvals).transpose()
             dt.add('add positioners')
-            dt.show()
+            #dt.show()
 
 
 if __name__ == '__main__':
