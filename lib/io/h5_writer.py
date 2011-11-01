@@ -1,15 +1,13 @@
+#!/usr/bin/env python
+"""
+HDF5 File writer
+"""
 import os
-import sys
-import copy
-import glob
-import shutil
+from os import path
 
 import time
-import numpy
+import numpy as np
 import h5py
-
-from string import printable
-from ConfigParser import  ConfigParser
 
 from xmap_nc import read_xmap_netcdf
 from ..utils import debugtime
@@ -20,11 +18,9 @@ from mapfolder import (readASCII, readMasterFile,
                        readEnvironFile, parseEnviron,
                        readROIFile)
 
-off_struck = 0
-off_xmap   = 0
-
-
 class H5Writer(object):
+    """ Write HDF5 file from raw XRF map"""
+    
     ScanFile   = 'Scan.ini'
     EnvFile    = 'Environ.dat'
     ROIFile    = 'ROI.dat'
@@ -41,25 +37,32 @@ class H5Writer(object):
         self.master_header = None
 
         self.h5file = None
-
+        self.h5root = None
+        self.pos_addr = None
+        self.ixaddr = 0
         self.last_row = 0
+        self.start_time = 0
+        self.stop_time = 0
+        self.calib = None
+        self.rowdata = None
+        self.pos_desc = None
+        self.roi_slices = []
+        self.roi_desc = []
+        self.roi_addr = []
 
-        self.roi_desc  = []
-        self.roi_addr  = []
-
-
-    def ReadMaster(self):
+    def read_master(self):
+        "reads master file for toplevel scan info"
         self.rowdata = None
         self.master_header = None
 
         if self.folder is None:
             return
-        fname = os.path.join(nativepath(self.folder), self.MasterFile)
+        fname = path.join(nativepath(self.folder), self.MasterFile)
         self.stop_time = os.stat(fname).st_mtime
-        if os.path.exists(fname):
+        if path.exists(fname):
             try:
                 header, rows = readMasterFile(fname)
-            except:
+            except IOError:
                 print 'Cannot read Scan folder'
                 return
             self.master_header = header
@@ -94,7 +97,6 @@ class H5Writer(object):
         "add ROI, DXP Settings, and Config data"
         group = self.add_group(root, 'config')
 
-
         for name, sect in (('scan', 'scan'),
                            ('general', 'general'),
                            ('positioners', 'slow_positioners'),
@@ -104,15 +106,15 @@ class H5Writer(object):
             for key, val in config[sect].items():
                 grp.create_dataset(key, data=val)
 
-        roidata, calib, dxp = readROIFile(os.path.join(self.folder, self.ROIFile))
+        roidat, calib, dxp = readROIFile(path.join(self.folder, self.ROIFile))
         roi_desc, roi_addr, roi_lim = [], [], []
         roi_slices = []
-        for iroi, label, roidat in roidata:
+        for iroi, label, lims in roidat:
             roi_desc.append(label)
             roi_addr.append("%smca%%i.R%i" % (config['general']['xmap'], iroi))
-            roi_lim.append([roidat[i] for i in range(4)])
-            roi_slices.append([slice(roidat[i][0], roidat[i][1]) for i in range(4)])
-        roi_lim = numpy.array(roi_lim)
+            roi_lim.append([lims[i] for i in range(4)])
+            roi_slices.append([slice(lims[i][0], lims[i][1]) for i in range(4)])
+        roi_lim = np.array(roi_lim)
 
         grp = self.add_group(group, 'rois')
 
@@ -134,7 +136,7 @@ class H5Writer(object):
         self.calib = calib
 
         # add env data
-        envdat = readEnvironFile(os.path.join(self.folder, self.EnvFile))
+        envdat = readEnvironFile(path.join(self.folder, self.EnvFile))
         env_desc, env_addr, env_val = parseEnviron(envdat)
         grp = self.add_group(group, 'environ')
         self.add_data(grp, 'name',     env_desc)
@@ -148,15 +150,13 @@ class H5Writer(object):
             return
 
         cfile = FastMapConfig()
-        cfile.Read(os.path.join(self.folder, 'Scan.ini'))
+        cfile.Read(path.join(self.folder, 'Scan.ini'))
 
         mapconf = cfile.config
         slow_pos = mapconf['slow_positioners']
         fast_pos = mapconf['fast_positioners']
         scanconf = mapconf['scan']
         dimension = scanconf['dimension']
-
-        user_titles = scanconf['comments'].split('\n')
         filename = scanconf['filename']
 
         pos1 = scanconf['pos1']
@@ -172,24 +172,24 @@ class H5Writer(object):
             self.pos_desc.append(slow_pos[yaddr])
 
         #
-        h5name = filename + '.h5'
-        fh = self.h5file = h5py.File(h5name, 'w')
+        self.h5file = h5py.File(filename+'.h5', 'w')
 
         attrs = {'Dimension':dimension,
                  'Stop_Time':self.stop_time,
                  'Start_Time':self.start_time}
         attrs.update(self.h5_attrs)
 
-        h5root = self.h5root = self.add_group(fh, 'xrf_map', attrs=attrs)
-        self.add_config(h5root, mapconf)
+        self.h5root = self.add_group(self.h5file,
+                                              'xrf_map', attrs=attrs)
+        self.add_config(self.h5root, mapconf)
 
-        self.add_group(h5root, 'scan')
-        self.add_group(h5root, 'xrf_spectra')
+        self.add_group(self.h5root, 'scan')
+        self.add_group(self.h5root, 'xrf_spectra')
 
 
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
-        self.ReadMaster()
+        self.read_master()
 
         if self.last_row == 0 and len(self.rowdata)>0:
             self.begin_h5file()
@@ -205,27 +205,24 @@ class H5Writer(object):
             print '>H5Writer.process row %i of %i, %s' % (self.last_row,
                                                           len(self.rowdata),
                                                           time.ctime())
-            yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
+            yval, xmapfile, struckfile, gatherfile, etime = self.rowdata[irow]
 
-            shead,sdata = readASCII(os.path.join(self.folder,struckfile))
-            ghead,gdata = readASCII(os.path.join(self.folder,gatherfile))
+            shead, sdata = readASCII(path.join(self.folder, struckfile))
+            ghead, gdata = readASCII(path.join(self.folder, gatherfile))
             dt.add('read xps, struck, row data')
             t0 = time.time()
             atime = -1
             while atime < 0 and time.time()-t0 < 10:
                 try:
-                    atime = time.ctime(os.stat(os.path.join(self.folder,
-                                                            xmapfile)).st_ctime)
-                    xmfile = os.path.join(self.folder,xmapfile)
+                    atime = time.ctime(os.stat(path.join(self.folder,
+                                                         xmapfile)).st_ctime)
+                    xmfile = path.join(self.folder, xmapfile)
                     xmapdat = read_xmap_netcdf(xmfile, verbose=False)
-                except:
-                    print 'xmap data failed to read'
-                    sys.exit()
-                    # self.clear()
-                    atime = -1
-                time.sleep(0.03)
+                except IOError:
+                    time.sleep(0.10)
             if atime < 0:
-                return 0
+                print 'Failed to read xmap data for row ', self.last_row
+                return
             #
             dt.add('read xmap data')
             xmdat = xmapdat.data[1:]
@@ -234,11 +231,10 @@ class H5Writer(object):
             xm_tl = (1.e6*xmapdat.liveTime[1:]).astype('int')
             xm_tr = (1.e6*xmapdat.realTime[1:]).astype('int')
 
-            gnpts, ngather  = gdata.shape
-            snpts, nscalers = sdata.shape
-
+            gnpts = gdata.shape[0]
+            snpts = sdata.shape[0]
             xnpts = xmdat.shape[0]
-            npts = min(snpts,gnpts,xnpts)
+            npts = min(snpts, gnpts, xnpts)
             npts = gnpts-1
 
             points = range(1, npts+1)
@@ -250,27 +246,29 @@ class H5Writer(object):
                 xmdat = xmdat[::-1]
                 dt.add('reversed data ')
             ix = self.ixaddr
-            posvals = [numpy.array([(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]),
-                       numpy.array([float(yval) for i in points])]
 
-            scan = self.h5root['scan']
-            xrf  = self.h5root['xrf_spectra']
+            xvals = [(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]
+            posvals = [np.array(xvals), 
+                       np.array([float(yval) for i in points])]
 
             if irow == 0:
+                xrf  = self.h5root['xrf_spectra']
+                scan = self.h5root['scan']
+
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
+                
+                off, slo = self.calib['offset'], self.calib['slope']
+                xnpts, nmca, nchan = xmdat.shape
 
-                off, slope = self.calib['offset'], self.calib['slope']
-                xnpts, nchan, nelem = xmdat.shape
 
-                # print 'Row 0 : ',  off, slope, snpts, nscalers, xnpts, nchan, nelem
-
-                enx = [(off[i] + slope[i]*numpy.arange(nelem)) for i in range(nchan)]
-                self.add_data(xrf, 'energies', numpy.array(enx, dtype=numpy.float32))
+                enx = [(off[i] + slo[i]*np.arange(nchan)) for i in range(nmca)]
+                self.add_data(xrf, 'energies', np.array(enx, dtype=np.float32))
                 for addr in self.roi_addr:
-                    det_addr.extend([addr % (i+1) for i in range(nchan)])
+                    det_addr.extend([addr % (i+1) for i in range(nmca)])
                 for desc in self.roi_desc:
-                    det_desc.extend(["%s (mca%i)" % (desc, i+1) for i in range(nchan)])
+                    det_desc.extend(["%s (mca%i)" % (desc, i+1)
+                                     for i in range(nmca)])
 
                 sums_map = {}
                 sums_desc = []
@@ -292,13 +290,13 @@ class H5Writer(object):
                     sums_list.append(slist)
 
                 nsum = len(sums_list)
-                sums_list = numpy.array(sums_list)
+                sums_list = np.array(sums_list)
                 self.add_data(scan, 'det_name',    det_desc)
                 self.add_data(scan, 'det_address', det_addr)
                 self.add_data(scan, 'sum_name',    sums_desc)
                 self.add_data(scan, 'sum_list',    sums_list)
 
-                ndet = len(det_desc)
+                nsca = len(det_desc)
                 for pname in ('MCA Real Time', 'MCA Live Time'):
                     self.pos_desc.append(pname)
                     self.pos_addr.append('')
@@ -306,91 +304,137 @@ class H5Writer(object):
                 self.add_data(scan, 'pos_name',     self.pos_desc)
                 self.add_data(scan, 'pos_address',  self.pos_addr)
 
-                det_raw = scan.create_dataset('det_raw', (2, npts, ndet), numpy.long,
-                                              compression=2)
-
-                det_cor = scan.create_dataset('det_dtcorr', (2, npts, ndet), numpy.float32,
-                                              compression=2)
-                sum_raw = scan.create_dataset('sum_raw', (2, npts, nsum), numpy.long,
-                                              compression=2)
-                sum_cor = scan.create_dataset('sum_dtcorr', (2, npts, nsum), numpy.float32,
-                                              compression=2)
-
-                pos = scan.create_dataset('pos', (2, npts, npos), numpy.float32,
-                                            compression=2)
-
-                rtime = xrf.create_dataset('realtime', (2, npts, nchan), numpy.int,
-                                           maxshape=(None, npts, nchan), compression=2)
-                ltime = xrf.create_dataset('livetime', (2, npts, nchan), numpy.int,
-                                           maxshape=(None, npts, nchan), compression=2)
-                dtcorr = xrf.create_dataset('dt_factor', (2, npts, nchan), numpy.float32,
-                                           maxshape=(None, npts, nchan), compression=2)
-                xdata = xrf.create_dataset('data', (2, npts, nchan, nelem), xmdat.dtype,
-                                           compression=2)
+                self.create_arrays(npts, npos, nsca, nsum, nmca, nchan)
                 dt.add('add row 0 ')
             else:
-                rtime = xrf['realtime']
+                rtime = self.h5root['xrf_spectra']['realtime']
                 if rtime.shape[0] <= irow:
-                    ltime = xrf['livetime']
-                    dtcorr = xrf['dt_factor']
-                    xdata  = xrf['data']
-                    d, npts, nchan, nelem = xdata.shape
                     nrow = 8*(1+irow/8)
-                    rtime.resize((nrow, npts, nchan))
-                    ltime.resize((nrow, npts, nchan))
-                    dtcorr.resize((nrow, npts, nchan))
-                    xdata.resize((nrow, npts, nchan, nelem))
-
-                    pos = scan['pos']
-                    pos.resize((nrow, npts, npos))
-
-                    det_raw = scan['det_raw']
-                    ndet = det_raw.shape[2]
-                    det_raw.resize((nrow, npts, ndet))
-                    det_cor = scan['det_dtcorr']
-                    det_cor.resize((nrow, npts, ndet))
-
-                    sum_raw = scan['sum_raw']
-                    nsum = sum_raw.shape[2]
-                    sum_raw.resize((nrow, npts, nsum))
-                    sum_cor = scan['sum_dtcorr']
-                    sum_cor.resize((nrow, npts, nsum))
+                    self.resize_arrays(nrow)
+                    
+            xrf = self.h5root['xrf_spectra']
+            scan = self.h5root['scan']
 
 
-            rtime[irow,:,:] = xm_tr
-            ltime[irow,:,:] = xm_tl
+            ltime  = xrf['livetime']
+            rtime  = xrf['realtime']
+            dtcorr = xrf['dt_factor']
+            xdata  = xrf['data']
+            pos    = scan['pos']
+            det_raw = scan['det_raw']
+            det_cor = scan['det_dtcorr']
+            sum_raw = scan['sum_raw']
+            sum_cor = scan['sum_dtcorr']
 
-            dtcorr[irow,:,:] = xm_ic.astype('float32')
+            rtime[irow, :, :] = xm_tr
+            ltime[irow, :, :] = xm_tl
+            dtcorr[irow, :, :] = xm_ic.astype('float32')
             dt.add('add rtime, ltime, corr')
-            xdata[irow,:,:,:] = xmdat
+            xdata[irow, :, :, :] = xmdat
             dt.add('add xrf data')
             draw = list(sdata.transpose())
             dcor = draw[:]
             sraw = draw[:]
             scor = draw[:]
             for slices in self.roi_slices:
-                iraw = [xmdat[:, i, slices[i]].sum(axis=1) for i in range(nchan)]
-                icor = [xmdat[:, i, slices[i]].sum(axis=1)*xm_ic[:, i]  for i in range(nchan)]
+                iraw = [xmdat[:, i, slices[i]].sum(axis=1)
+                        for i in range(nmca)]
+                icor = [xmdat[:, i, slices[i]].sum(axis=1)*xm_ic[:, i]
+                        for i in range(nmca)]
                 draw.extend(iraw)
                 dcor.extend(icor)
-                sraw.append(numpy.array(iraw).sum(axis=0))
-                scor.append(numpy.array(icor).sum(axis=0))
+                sraw.append(np.array(iraw).sum(axis=0))
+                scor.append(np.array(icor).sum(axis=0))
+            dt.add('made det data')
 
-            det_raw[irow,:,:] = numpy.array(draw).transpose()
-            det_cor[irow,:,:] = numpy.array(dcor).transpose()
-            sum_raw[irow,:,:] = numpy.array(sraw).transpose()
-            sum_cor[irow,:,:] = numpy.array(scor).transpose()
+            det_raw[irow, :, :] = np.array(draw).transpose()
+            det_cor[irow, :, :] = np.array(dcor).transpose()
+            sum_raw[irow, :, :] = np.array(sraw).transpose()
+            sum_cor[irow, :, :] = np.array(scor).transpose()
             dt.add('add det data')
 
-            posvals.append(xm_tr.sum(axis=1).astype('float32') / nchan)
-            posvals.append(xm_tl.sum(axis=1).astype('float32') / nchan)
-            pos[irow,:,:] = numpy.array(posvals).transpose()
+            posvals.append(xm_tr.sum(axis=1).astype('float32') / nmca)
+            posvals.append(xm_tl.sum(axis=1).astype('float32') / nmca)
+            pos[irow, :, :] = np.array(posvals).transpose()
             dt.add('add positioners')
-            #dt.show()
+            # dt.show()
+        self.resize_arrays()
+        
+    def resize_arrays(self, nrow=None):
+        "resize all arrays for nrows"
+        if nrow is None:
+            nrow = self.last_row
+        print "Resize Arrays ", nrow
+        scan = self.h5root['scan']
+        xrf  = self.h5root['xrf_spectra']
+ 
+        ltime  = xrf['livetime']
+        rtime  = xrf['realtime']
+        dtcorr = xrf['dt_factor']
+        xdata  = xrf['data']
+        pos    = scan['pos']
+        det_raw = scan['det_raw']
+        det_cor = scan['det_dtcorr']
+        sum_raw = scan['sum_raw']
+        sum_cor = scan['sum_dtcorr']
+        
+        old, npts, nmca, nchan = xdata.shape
+
+        rtime.resize((nrow, npts, nmca))
+        ltime.resize((nrow, npts, nmca))
+        dtcorr.resize((nrow, npts, nmca))
+        xdata.resize((nrow, npts, nmca, nchan))
+
+        old, npts, npos = pos.shape
+        old, npts, nsca = det_raw.shape
+        old, npts, nsum = sum_raw.shape
+        
+        pos.resize((nrow, npts, npos))
+        det_raw.resize((nrow, npts, nsca))
+        det_cor.resize((nrow, npts, nsca))
+        sum_raw.resize((nrow, npts, nsum))
+        sum_cor.resize((nrow, npts, nsum))
+        return rtime
+
+    def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
+        scan = self.h5root['scan']
+        xrf  = self.h5root['xrf_spectra']        
+        NINIT = 16
+        scan.create_dataset('det_raw', (NINIT, npts, nsca),
+                            np.int32, compression=2)
+        
+        scan.create_dataset('det_dtcorr', (NINIT, npts, nsca),
+                            np.float32, compression=2)
+        scan.create_dataset('sum_raw', (NINIT, npts, nsum),
+                            np.int32, compression=2)
+        scan.create_dataset('sum_dtcorr', (NINIT, npts, nsum),
+                            np.float32, compression=2)
+        
+        scan.create_dataset('pos', (NINIT, npts, npos),
+                            np.float32, compression=2)
+        
+        xrf.create_dataset('realtime', (NINIT, npts, nmca),
+                           np.int, compression=2,
+                           maxshape=(None, npts, nmca))
+        
+        xrf.create_dataset('livetime', (NINIT, npts, nmca), 
+                           np.int, compression=2,
+                           maxshape=(None, npts, nmca))
+        
+        xrf.create_dataset('dt_factor', (NINIT, npts, nmca), 
+                           np.float32, compression=2,
+                           maxshape=(None, npts, nmca))
+        
+        xrf.create_dataset('data', (NINIT, npts, nmca, nchan),
+                           np.int16, compression=2, 
+                           maxshape=(None, npts, nmca, nchan))
+        
+        
 
 
 if __name__ == '__main__':
     dirname = '../SRM1833_map_001'
     ms = H5Writer(folder=dirname)
     ms.process()
+
 
