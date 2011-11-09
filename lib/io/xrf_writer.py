@@ -4,8 +4,8 @@ import time
 import glob
 
 from ConfigParser import  ConfigParser
-from EscanWriter import readEnvironFile, readScanConfig
-from read_xmap_netcdf import read_xmap_netcdf
+from mapfolder import readEnvironFile, readScanConfig
+from xmap_nc import read_xmap_netcdf
 
 def readROIFile(hfile):
     cp =  ConfigParser()
@@ -95,5 +95,5 @@ def WriteFullXRF(folder):
     for px in spectra:
         fp.write(" %i %i %i %i\n" % (px[0], px[1], px[2], px[3]))
 
-spectra = WriteFullXRF('Map')
+# spectra = WriteFullXRF('Map')
 # write_medfile(full_spectra)

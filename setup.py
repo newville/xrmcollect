@@ -32,7 +32,8 @@ setup(name = 'epicscollect',
       description = 'X-ray Data Collection library using Epics',
       package_dir = {'epicscollect': 'lib'},
       packages = ['epicscollect','epicscollect.gui','epicscollect.xmap',
-                  'epicscollect.xps', 
+                  'epicscollect.xps',
+                  'epicscollect.io', 'epicscollect.escan', 
                   'epicscollect.utils'])
 
 
