@@ -186,8 +186,8 @@ if (keyword_set(param) ne 0) then begin
         'pos':          return, self->get_pos('')
         'det':           return, get_h5data(self.g_scan,'det_raw')
         'det_corrected': return, get_h5data(self.g_scan,'det_dtcorr')
-        'sums':          return, get_h5data(self.g_scan,'sums_raw')
-        'sums_corrected':return, get_h5data(self.g_scan,'sums_dtcorr')
+        'sums':          return, get_h5data(self.g_scan,'sum_raw')
+        'sums_corrected':return, get_h5data(self.g_scan,'sum_dtcorr')
 
         'det_names':     return, get_h5data(self.g_scan,'det_name')
         'det_pvs':       return, get_h5data(self.g_scan,'det_address')
@@ -195,8 +195,8 @@ if (keyword_set(param) ne 0) then begin
         'pos_names':     return, get_h5data(self.g_scan,'pos_name')
         'pos_pvs':       return, get_h5data(self.g_scan,'pos_address')
 
-        'sums_list':     return, get_h5data(self.g_scan,'sums_list')
-        'sums_names':    return, get_h5data(self.g_scan,'sums_name')
+        'sums_list':     return, get_h5data(self.g_scan,'sum_list')
+        'sums_names':    return, get_h5data(self.g_scan,'sum_name')
         'user_titles':   return, get_h5data(self.g_scan,'user_titles')
         ; 'scan_regions':  return, get_h5data(self.g_scan,'scan_regions')
 
