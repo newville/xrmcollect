@@ -26,7 +26,7 @@ class H5Writer(object):
     ROIFile    = 'ROI.dat'
     MasterFile = 'Master.dat'
 
-    h5_attrs = {'Version': '1.1.0',
+    h5_attrs = {'Version': '1.2.0',
                 'Title': 'Epics Scan Data',
                 'Beamline': 'GSECARS, 13-IDE / APS',
                 'Scan_Type': 'Fast Map',
@@ -49,6 +49,7 @@ class H5Writer(object):
         self.roi_slices = []
         self.roi_desc = []
         self.roi_addr = []
+        self.npts = -1
 
     def read_master(self):
         "reads master file for toplevel scan info"
@@ -58,7 +59,7 @@ class H5Writer(object):
         if self.folder is None:
             return
         fname = path.join(nativepath(self.folder), self.MasterFile)
-        self.stop_time = os.stat(fname).st_mtime
+        self.stop_time = time.ctime(os.stat(fname).st_mtime)
         if path.exists(fname):
             try:
                 header, rows = readMasterFile(fname)
@@ -67,7 +68,15 @@ class H5Writer(object):
                 return
             self.master_header = header
             self.rowdata = rows
-            self.start_time = self.master_header[0][6:]
+            stime = self.master_header[0][6:]
+            
+            self.start_time = stime.replace('started at','').strip()
+
+        cfile = FastMapConfig()
+        cfile.Read(path.join(self.folder, 'Scan.ini'))
+        self.mapconf = cfile.config
+        
+        self.filename = self.mapconf['scan']['filename']
 
     def add_group(self, group, name, dat=None, attrs=None):
         """ add an hdf5 group"""
@@ -149,16 +158,14 @@ class H5Writer(object):
         if self.h5file is not None or self.folder is None:
             return
 
-        cfile = FastMapConfig()
-        cfile.Read(path.join(self.folder, 'Scan.ini'))
-
-        mapconf = cfile.config
+        mapconf = self.mapconf
         slow_pos = mapconf['slow_positioners']
         fast_pos = mapconf['fast_positioners']
+
         scanconf = mapconf['scan']
         dimension = scanconf['dimension']
         filename = scanconf['filename']
-
+        
         pos1 = scanconf['pos1']
         self.pos_addr = [pos1]
         self.pos_desc = [slow_pos[pos1]]
@@ -171,6 +178,7 @@ class H5Writer(object):
             self.pos_addr.append(yaddr)
             self.pos_desc.append(slow_pos[yaddr])
 
+        self.dimension = dimension
         #
         self.h5file = h5py.File(filename+'.h5', 'w')
 
@@ -190,7 +198,9 @@ class H5Writer(object):
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
         self.read_master()
-
+        if len(self.rowdata) < 1:
+            print ' === scan directory empty!'
+            return
         if self.last_row == 0 and len(self.rowdata)>0:
             self.begin_h5file()
 
@@ -212,15 +222,16 @@ class H5Writer(object):
             dt.add('read xps, struck, row data')
             t0 = time.time()
             atime = -1
+            xmapdat = None
             while atime < 0 and time.time()-t0 < 10:
                 try:
                     atime = time.ctime(os.stat(path.join(self.folder,
                                                          xmapfile)).st_ctime)
                     xmfile = path.join(self.folder, xmapfile)
                     xmapdat = read_xmap_netcdf(xmfile, verbose=False)
-                except IOError:
+                except (IOError, IndexError):
                     time.sleep(0.10)
-            if atime < 0:
+            if atime < 0 or xmapdat is None:
                 print 'Failed to read xmap data for row ', self.last_row
                 return
             #
@@ -235,8 +246,29 @@ class H5Writer(object):
             snpts = sdata.shape[0]
             xnpts = xmdat.shape[0]
             npts = min(snpts, gnpts, xnpts)
-            npts = gnpts-1
-
+            # ok this is a hack -- try to recover from missing
+            # struck data.
+            if irow  > 0 and npts != self.npts:
+                if (snpts > self.npts/2.) and (snpts < self.npts):
+                    sdata = list(sdata)
+                    for i in range(self.npts+1-snpts):
+                        sdata.append(sdata[snpts-1])
+                    sdata = np.array(sdata)
+                snpts = sdata.shape[0]
+                npts = min(snpts, gnpts, xnpts)
+                if npts != self.npts:
+                    print 'not enough data at row ', irow
+                    break
+            if npts < 2:
+                print 'not enough data at row ', irow
+                break
+            
+            if xnpts != npts:
+                xm_tr = xm_tr[:npts]
+                xm_tl = xm_tl[:npts]
+                xm_ic = xm_ic[:npts]
+                xmdat = xmdat[:npts]
+                
             points = range(1, npts+1)
             if irow % 2 != 0:
                 points.reverse()
@@ -248,10 +280,13 @@ class H5Writer(object):
             ix = self.ixaddr
 
             xvals = [(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]
-            posvals = [np.array(xvals), 
-                       np.array([float(yval) for i in points])]
+
+            posvals = [np.array(xvals)]
+            if self.dimension == 2:
+                posvals.append(np.array([float(yval) for i in points]))
 
             if irow == 0:
+                self.npts = npts
                 xrf  = self.h5root['xrf_spectra']
                 scan = self.h5root['scan']
 
@@ -304,8 +339,6 @@ class H5Writer(object):
                 self.add_data(scan, 'pos_name',     self.pos_desc)
                 self.add_data(scan, 'pos_address',  self.pos_addr)
 
-                print 'Call create arrays  ', len(self.rowdata)
-                                                          
                 self.create_arrays(npts, npos, nsca, nsum, nmca, nchan)
 
                 dt.add('add row 0 ')
@@ -335,10 +368,12 @@ class H5Writer(object):
             dt.add('add rtime, ltime, corr')
             xdata[irow, :, :, :] = xmdat
             dt.add('add xrf data')
-            draw = list(sdata.transpose())
+            draw = list(sdata[:npts].transpose())
+            # print "======== NPTS ", sdata.shape, xmdat.shape, npts, nmca
             dcor = draw[:]
             sraw = draw[:]
             scor = draw[:]
+
             for slices in self.roi_slices:
                 iraw = [xmdat[:, i, slices[i]].sum(axis=1)
                         for i in range(nmca)]
@@ -358,16 +393,20 @@ class H5Writer(object):
 
             posvals.append(xm_tr.sum(axis=1).astype('float32') / nmca)
             posvals.append(xm_tl.sum(axis=1).astype('float32') / nmca)
+
             pos[irow, :, :] = np.array(posvals).transpose()
             dt.add('add positioners')
             # dt.show()
-        self.resize_arrays()
+        try:
+            self.resize_arrays()
+        except:
+            pass
         
     def resize_arrays(self, nrow=None):
         "resize all arrays for nrows"
         if nrow is None:
             nrow = self.last_row
-        print "Resize Arrays ", nrow
+
         scan = self.h5root['scan']
         xrf  = self.h5root['xrf_spectra']
  
@@ -392,8 +431,6 @@ class H5Writer(object):
         old, npts, nsca = det_raw.shape
         old, npts, nsum = sum_raw.shape
 
-        print 'RESIZE POS ', nrow, npts, npos
-        print pos
         pos.resize((nrow, npts, npos))
         det_raw.resize((nrow, npts, nsca))
         det_cor.resize((nrow, npts, nsca))

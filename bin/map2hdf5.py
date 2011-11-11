@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from epicscollect.io import H5Writer
 import sys
 
