@@ -304,7 +304,10 @@ class H5Writer(object):
                 self.add_data(scan, 'pos_name',     self.pos_desc)
                 self.add_data(scan, 'pos_address',  self.pos_addr)
 
+                print 'Call create arrays  ', len(self.rowdata)
+                                                          
                 self.create_arrays(npts, npos, nsca, nsum, nmca, nchan)
+
                 dt.add('add row 0 ')
             else:
                 rtime = self.h5root['xrf_spectra']['realtime']
@@ -388,7 +391,9 @@ class H5Writer(object):
         old, npts, npos = pos.shape
         old, npts, nsca = det_raw.shape
         old, npts, nsum = sum_raw.shape
-        
+
+        print 'RESIZE POS ', nrow, npts, npos
+        print pos
         pos.resize((nrow, npts, npos))
         det_raw.resize((nrow, npts, nsca))
         det_cor.resize((nrow, npts, nsca))
@@ -401,17 +406,24 @@ class H5Writer(object):
         xrf  = self.h5root['xrf_spectra']        
         NINIT = 16
         scan.create_dataset('det_raw', (NINIT, npts, nsca),
-                            np.int32, compression=2)
-        
+                            np.int32, compression=2,
+                            maxshape=(None, npts, nsca))
+          
         scan.create_dataset('det_dtcorr', (NINIT, npts, nsca),
-                            np.float32, compression=2)
+                            np.float32, compression=2,
+                            maxshape=(None, npts, nsca))      
+                            
         scan.create_dataset('sum_raw', (NINIT, npts, nsum),
-                            np.int32, compression=2)
+                            np.int32, compression=2,
+                            maxshape=(None, npts, nsum))
+
         scan.create_dataset('sum_dtcorr', (NINIT, npts, nsum),
-                            np.float32, compression=2)
-        
+                            np.float32, compression=2,
+                            maxshape=(None, npts, nsum))
+
         scan.create_dataset('pos', (NINIT, npts, npos),
-                            np.float32, compression=2)
+                            np.float32, compression=2,
+                            maxshape=(None, npts, npos))
         
         xrf.create_dataset('realtime', (NINIT, npts, nmca),
                            np.int, compression=2,
