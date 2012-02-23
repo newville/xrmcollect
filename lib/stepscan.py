@@ -228,7 +228,7 @@ class ScalerCounter(DeviceCounter):
         DeviceCounter.__init__(self, prefix, rtype='scaler', outpvs=outpvs)
         prefix = self.prefix
         fields = []
-        for i in range(1, nnchan+1):
+        for i in range(1, nchan+1):
             label = caget('%s.NM%i' % (prefix, i))
             if len(label) > 0 or use_unlabeled:
                 suff = '.S%i' % i
@@ -246,7 +246,7 @@ class DXPCounter(DeviceCounter):
         prefix = self.prefix
         self.set_counters(self._fields)
 
-class MCACounter():
+class MCACounter(DeviceCounter):
     """Simple MCA Counter: saves all ROIs (total or net) and, optionally full spectra
     """
     invalid_device_msg = 'MCACounter must use a mca'
@@ -266,35 +266,45 @@ class MCACounter():
             fields.append(('.VAL', 'mca spectra'))
         self.set_counters(fields)
 
-class MultiMCACounter():
+class MultiMCACounter(DeviceCounter):
     invalid_device_msg = 'MCACounter must use a med'
     _dxp_fields = (('.InputCountRate', 'ICR'),
                    ('.OutputCountRate', 'OCR'))
     def __init__(self, prefix, outpvs=None, nmcas=4, nrois=32,
-                 use_net=False,  use_unlabeled=False, use_full=True):
+                 search_all = False,  use_net=False,
+                 use_unlabeled=False, use_full=True):
         DeviceCounter.__init__(self, prefix, rtype=None, outpvs=outpvs)
         prefix = self.prefix
         fields = []
         for imca in range(1, nmcas+1):
-            mcaname = 'mca%i' % i
-            dxpname = 'dxp%i' % i
+            mcaname = 'mca%i' % imca
+            dxpname = 'dxp%i' % imca
             for i in range(nrois):
-                roiname = caget('%s:%s.R%iNM' % (prefix, mcaname, i))
+                roiname = caget('%s:%s.R%iNM' % (prefix, mcaname, i)).strip()
+                roi_hi  = caget('%s:%s.R%iHI' % (prefix, mcaname, i))
                 label = '%s (%s)'% (roiname, mcaname)
-                if len(label) > 0 or use_unlabeled:
+                if (len(roiname) > 0 and roi_hi > 0) or use_unlabeled:
                     suff = ':%s.R%i' % (mcaname, i)
-                if use_net:
-                    suff = ':%s.R%iN' %  (mcaname, i)
-                fields.append((suff, label))
+                    if use_net:
+                        suff = ':%s.R%iN' %  (mcaname, i)
+                    fields.append((suff, label))
+                if roi_hi < 1 and not search_all:
+                    break
             # for dsuff, dname in self._dxp_fields:
             #     fields.append()... add dxp
             if use_full:
-                fields.append(('.VAL', 'mca spectra (%s)' % mcaname))
-
+                fields.append((':%s.VAL' %mcaname, 'mca spectra (%s)' % mcaname))
+        self.set_counters(fields)
+            
 class DetectorMixin(object):
+    trigger_suffix = None
     def __init__(self, prefix, **kws):
         self.prefix = prefix
+
         self.trigger = None
+        if self.trigger_suffix is not None:
+            self.trigger = Trigger("%s%s" % (prefix, self.trigger_suffix))
+           
         self.counters = None
 
     def pre_scan(self, **kws):
@@ -307,33 +317,45 @@ class DetectorMixin(object):
         pass
 
 class SimpleDetector(DetectorMixin):
+    trigger_suffix = None
     def __init__(self, prefix):
-        Detector.__init__(self, prefix)
-        self.trigger = None
+        DetectorMixin.__init__(self, prefix)
         self.counters = [Counter(prefix)]
 
 class ScalerDetector(DetectorMixin):
+    trigger_suffix = '.CNT'
+
     def __init__(self, prefix, nchan=8, use_calc=True):
-        Detector.__init__(self, prefix)
+        DetectorMixin.__init__(self, prefix)
         self.scaler = Scaler(prefix, nchan=nchan)
-        self.trigger = Trigger("%s.CNT" % prefix)
         self.counters = ScalerCounter(prefix, nchan=nchan, use_calc=use_calc)
 
     def pre_scan(self, **kws):
         self.scaler.OneShot()
 
-
 class McaDetector(DetectorMixin):
+    trigger_suffix = 'EraseStart'
     def __init__(self, prefix, save_spectra=True):
-        Detector.__init__(self, prefix)
+        DetectorMixin.__init__(self, prefix)
         self.mca = Mca(prefix)
         self.trigger = Trigger("%sEraseStart" % prefix)
         self.counters = ScalerCounter(prefix, nchan=nchan, use_calc=use_calc)
 
     def pre_scan(self, **kws):
-        self.scaler.OneShot()
+        self.mca # 
 
 class Scan(object):
     def __init__(self, positioners=None, triggers=None, detectors=None):
         print 'scan obj'
+        self.pos_settle_time = 0
+        self.det_settle_time = 0
+        # detectors
+        # positioners
+        # arrays
+        self.breakpoints = None
+        
+    def run(self):
+        print 'run scan!'
 
+    def write_ascii_data(self):
+        print 'write data!'
