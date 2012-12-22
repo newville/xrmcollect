@@ -4,7 +4,7 @@ HDF5 File writer
 """
 import os
 from os import path
-
+import sys
 import time
 import numpy as np
 import h5py
@@ -20,7 +20,7 @@ from mapfolder import (readASCII, readMasterFile,
 
 class H5Writer(object):
     """ Write HDF5 file from raw XRF map"""
-    
+
     ScanFile   = 'Scan.ini'
     EnvFile    = 'Environ.dat'
     ROIFile    = 'ROI.dat'
@@ -69,13 +69,13 @@ class H5Writer(object):
             self.master_header = header
             self.rowdata = rows
             stime = self.master_header[0][6:]
-            
+
             self.start_time = stime.replace('started at','').strip()
 
         cfile = FastMapConfig()
         cfile.Read(path.join(self.folder, 'Scan.ini'))
         self.mapconf = cfile.config
-        
+
         self.filename = self.mapconf['scan']['filename']
 
     def add_group(self, group, name, dat=None, attrs=None):
@@ -165,7 +165,7 @@ class H5Writer(object):
         scanconf = mapconf['scan']
         dimension = scanconf['dimension']
         filename = scanconf['filename']
-        
+
         pos1 = scanconf['pos1']
         self.pos_addr = [pos1]
         self.pos_desc = [slow_pos[pos1]]
@@ -188,12 +188,12 @@ class H5Writer(object):
         attrs.update(self.h5_attrs)
 
         self.h5root = self.add_group(self.h5file,
-                                              'xrf_map', attrs=attrs)
+                                     'xrf_map', attrs=attrs)
+
         self.add_config(self.h5root, mapconf)
-
         self.add_group(self.h5root, 'scan')
-        self.add_group(self.h5root, 'xrf_spectra')
-
+        self.xrf_dets = []
+        print ' begin h5 file done'
 
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
@@ -206,11 +206,11 @@ class H5Writer(object):
 
         if maxrow is None:
             maxrow = len(self.rowdata)
-
+        print 'process maxrow = ', maxrow
         roiscan = self.h5root['scan']
+        dt = debugtime()
         while self.last_row <  maxrow:
             irow = self.last_row
-            dt = debugtime()
             self.last_row += 1
             print '>H5Writer.process row %i of %i, %s' % (self.last_row,
                                                           len(self.rowdata),
@@ -262,13 +262,13 @@ class H5Writer(object):
             if npts < 2:
                 print 'not enough data at row ', irow
                 break
-            
+
             if xnpts != npts:
                 xm_tr = xm_tr[:npts]
                 xm_tl = xm_tl[:npts]
                 xm_ic = xm_ic[:npts]
                 xmdat = xmdat[:npts]
-                
+
             points = range(1, npts+1)
             if irow % 2 != 0:
                 points.reverse()
@@ -276,7 +276,7 @@ class H5Writer(object):
                 xm_tl = xm_tl[::-1]
                 xm_ic = xm_ic[::-1]
                 xmdat = xmdat[::-1]
-                dt.add('reversed data ')
+                #dt.add('reversed data ')
             ix = self.ixaddr
 
             xvals = [(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]
@@ -287,18 +287,22 @@ class H5Writer(object):
 
             if irow == 0:
                 self.npts = npts
-                xrf  = self.h5root['xrf_spectra']
-                scan = self.h5root['scan']
+                n, ndet, nchans = xmdat.shape
+                xnpts, nmca, nchan = xmdat.shape
+                en_index = np.arange(nchan)
+                off, slo = self.calib['offset'], self.calib['slope']
 
+                for imca in range(nmca):
+                    dname = 'det%i' % (imca+1)
+                    self.add_group(self.h5root, dname)
+                    self.xrf_dets.append(self.h5root[dname])
+                    en = 1.0*off[imca] + slo[imca]*en_index
+                    self.add_data(self.h5root[dname], 'energy', en)
+
+                scan = self.h5root['scan']
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
-                
-                off, slo = self.calib['offset'], self.calib['slope']
-                xnpts, nmca, nchan = xmdat.shape
 
-
-                enx = [(off[i] + slo[i]*np.arange(nchan)) for i in range(nmca)]
-                self.add_data(xrf, 'energies', np.array(enx, dtype=np.float32))
                 for addr in self.roi_addr:
                     det_addr.extend([addr % (i+1) for i in range(nmca)])
                 for desc in self.roi_desc:
@@ -343,30 +347,27 @@ class H5Writer(object):
 
                 dt.add('add row 0 ')
             else:
-                rtime = self.h5root['xrf_spectra']['realtime']
+                rtime = self.xrf_dets[0]['realtime']
                 if rtime.shape[0] <= irow:
                     nrow = 8*(1+irow/8)
                     self.resize_arrays(nrow)
-                    
-            xrf = self.h5root['xrf_spectra']
+                    dt.add('resize data')
+
             scan = self.h5root['scan']
-
-
-            ltime  = xrf['livetime']
-            rtime  = xrf['realtime']
-            dtcorr = xrf['dt_factor']
-            xdata  = xrf['data']
             pos    = scan['pos']
             det_raw = scan['det_raw']
             det_cor = scan['det_dtcorr']
             sum_raw = scan['sum_raw']
             sum_cor = scan['sum_dtcorr']
 
-            rtime[irow, :, :] = xm_tr
-            ltime[irow, :, :] = xm_tl
-            dtcorr[irow, :, :] = xm_ic.astype('float32')
-            dt.add('add rtime, ltime, corr')
-            xdata[irow, :, :, :] = xmdat
+            #print 'DET 0 realtime : ', self.xrf_dets[0]['realtime']
+            #print 'xmap data shape: ', xm_tr.shape, xmdat.shape
+            for ixrf, xrf in enumerate(self.xrf_dets):
+                xrf['realtime'][irow, :] = xm_tr[:,ixrf]
+                xrf['livetime'][irow, :] = xm_tl[:,ixrf]
+                xrf['dt_factor'][irow, :] = xm_ic[:,ixrf].astype('float32')
+                # dt.add('add rtime, ltime, corr')
+                xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
             dt.add('add xrf data')
             draw = list(sdata[:npts].transpose())
             # print "======== NPTS ", sdata.shape, xmdat.shape, npts, nmca
@@ -383,49 +384,45 @@ class H5Writer(object):
                 dcor.extend(icor)
                 sraw.append(np.array(iraw).sum(axis=0))
                 scor.append(np.array(icor).sum(axis=0))
-            dt.add('made det data')
+            # dt.add('made det data')
 
             det_raw[irow, :, :] = np.array(draw).transpose()
             det_cor[irow, :, :] = np.array(dcor).transpose()
             sum_raw[irow, :, :] = np.array(sraw).transpose()
             sum_cor[irow, :, :] = np.array(scor).transpose()
-            dt.add('add det data')
+            #dt.add('add det data')
 
             posvals.append(xm_tr.sum(axis=1).astype('float32') / nmca)
             posvals.append(xm_tl.sum(axis=1).astype('float32') / nmca)
 
             pos[irow, :, :] = np.array(posvals).transpose()
             dt.add('add positioners')
-            # dt.show()
         try:
             self.resize_arrays()
+            dt.add('end of final resize')
         except:
             pass
-        
+        dt.show()
+
     def resize_arrays(self, nrow=None):
         "resize all arrays for nrows"
         if nrow is None:
             nrow = self.last_row
+        print 'RESIZE Arrays ', nrow
+        # xrf  = self.h5root['xrf_spectra']
+
+        old, npts, nchan = self.xrf_dets[0]['data'].shape
+        for xrf in self.xrf_dets:
+            for aname in ('livetime', 'realtime', 'dt_factor'):
+                xrf[aname].resize((nrow, npts))
+            xrf['data'].resize((nrow, npts, nchan))
 
         scan = self.h5root['scan']
-        xrf  = self.h5root['xrf_spectra']
- 
-        ltime  = xrf['livetime']
-        rtime  = xrf['realtime']
-        dtcorr = xrf['dt_factor']
-        xdata  = xrf['data']
-        pos    = scan['pos']
+        pos     = scan['pos']
         det_raw = scan['det_raw']
         det_cor = scan['det_dtcorr']
         sum_raw = scan['sum_raw']
         sum_cor = scan['sum_dtcorr']
-        
-        old, npts, nmca, nchan = xdata.shape
-
-        rtime.resize((nrow, npts, nmca))
-        ltime.resize((nrow, npts, nmca))
-        dtcorr.resize((nrow, npts, nmca))
-        xdata.resize((nrow, npts, nmca, nchan))
 
         old, npts, npos = pos.shape
         old, npts, nsca = det_raw.shape
@@ -436,20 +433,19 @@ class H5Writer(object):
         det_cor.resize((nrow, npts, nsca))
         sum_raw.resize((nrow, npts, nsum))
         sum_cor.resize((nrow, npts, nsum))
-        return rtime
 
     def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
         scan = self.h5root['scan']
-        xrf  = self.h5root['xrf_spectra']        
-        NINIT = 16
+        NINIT = 4
+        print 'Create Arrays  ! XRF SPECTRA ', NINIT
         scan.create_dataset('det_raw', (NINIT, npts, nsca),
                             np.int32, compression=2,
                             maxshape=(None, npts, nsca))
-          
+
         scan.create_dataset('det_dtcorr', (NINIT, npts, nsca),
                             np.float32, compression=2,
-                            maxshape=(None, npts, nsca))      
-                            
+                            maxshape=(None, npts, nsca))
+
         scan.create_dataset('sum_raw', (NINIT, npts, nsum),
                             np.int32, compression=2,
                             maxshape=(None, npts, nsum))
@@ -461,24 +457,24 @@ class H5Writer(object):
         scan.create_dataset('pos', (NINIT, npts, npos),
                             np.float32, compression=2,
                             maxshape=(None, npts, npos))
-        
-        xrf.create_dataset('realtime', (NINIT, npts, nmca),
-                           np.int, compression=2,
-                           maxshape=(None, npts, nmca))
-        
-        xrf.create_dataset('livetime', (NINIT, npts, nmca), 
-                           np.int, compression=2,
-                           maxshape=(None, npts, nmca))
-        
-        xrf.create_dataset('dt_factor', (NINIT, npts, nmca), 
-                           np.float32, compression=2,
-                           maxshape=(None, npts, nmca))
-        
-        xrf.create_dataset('data', (NINIT, npts, nmca, nchan),
-                           np.int16, compression=2, 
-                           maxshape=(None, npts, nmca, nchan))
-        
-        
+        for xrf in self.xrf_dets:
+            xrf.create_dataset('realtime', (NINIT, npts),
+                               np.int, compression=2,
+                               maxshape=(None, npts))
+
+            xrf.create_dataset('livetime', (NINIT, npts),
+                               np.int, compression=2,
+                               maxshape=(None, npts))
+
+            xrf.create_dataset('dt_factor', (NINIT, npts),
+                               np.float32, compression=2,
+                               maxshape=(None, npts))
+
+            xrf.create_dataset('data', (NINIT, npts, nchan),
+                               np.int16, compression=2,
+                               maxshape=(None, npts, nchan))
+
+
 
 
 if __name__ == '__main__':
