@@ -22,7 +22,7 @@ try:
 except:
     print no_sqlalchemy
     sys.exit()
-    
+
 setup(name = 'epicscollect',
       version = lib.__version__,
       author = 'Matthew Newville',
@@ -32,8 +32,7 @@ setup(name = 'epicscollect',
       description = 'X-ray Data Collection library using Epics',
       package_dir = {'epicscollect': 'lib'},
       packages = ['epicscollect','epicscollect.gui','epicscollect.xmap',
-                  'epicscollect.xps',
-                  'epicscollect.io', 'epicscollect.escan', 
+                  'epicscollect.xps', 'epicscollect.io',
                   'epicscollect.utils'])
 
 

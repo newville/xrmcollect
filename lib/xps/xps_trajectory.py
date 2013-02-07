@@ -45,7 +45,7 @@ DiscontinuityAngle = 0.01
 Line = %f, %f
 """
     def __init__(self, host=None, user=None, passwd=None,
-                 group=None, positioners=None):
+                 group=None, positioners=None, mode=None, type=None):
         self.host = host or config.host
         self.user = user or config.user
         self.passwd = passwd or config.passwd
@@ -149,8 +149,12 @@ Line = %f, %f
         self.trajectories['backward'] = back_traj
 
 
-        self.upload_trajectoryFile('foreward.trj', self.linetraj_text % (xrange, yrange))
-        self.upload_trajectoryFile('backward.trj', self.linetraj_text % (-xrange, -yrange))
+        try:
+            self.upload_trajectoryFile('foreward.trj', self.linetraj_text % (xrange, yrange))
+            self.upload_trajectoryFile('backward.trj', self.linetraj_text % (-xrange, -yrange))
+            return True
+        except:
+            return False
 
     def abortScan(self):
         pass
@@ -203,7 +207,7 @@ Line = %f, %f
                                                           ('0','0'), ('0','0'))
 
         o = self.xps.EventExtendedConfigurationActionSet(self.ssid,  ('GatheringOneData',),
-                                                     ('',), ('',),('',),('',))
+                                                         ('',), ('',),('',),('',))
 
         eventID, m = self.xps.EventExtendedStart(self.ssid)
         # tprint 'Execute',  traj_file, eventID, m
@@ -254,6 +258,13 @@ Line = %f, %f
         # self.xps.GatheringStop(self.ssid)
         db = debugtime()
         ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+        counter = 0
+        while npulses < 1 and counter < 5:
+            counter += 1
+            time.sleep(1.50)
+            ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+            print 'Had to do repeat XPS Gathering: ', ret, npulses, nx
+            
         db.add(' Will Save %i pulses , ret=%i ' % (npulses, ret))
         ret, buff = self.xps.GatheringDataMultipleLinesGet(self.ssid, 0, npulses)
         db.add('MLGet ret=%i, buff_len = %i ' % (ret, len(buff)))

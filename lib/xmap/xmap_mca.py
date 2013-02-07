@@ -158,12 +158,19 @@ class MultiXMAP(epics.Device):
         "Advance to Next Pixel until CurrentPixel == PixelsPerRun"
         pprun = self.PixelsPerRun
         cur   = self.dxps[0].get('CurrentPixel')
+        counter = 0
+        while cur < pprun and counter < 20:
+            time.sleep(0.1)
+            counter +=1
+            pprun = self.PixelsPerRun
+            cur   = self.dxps[0].get('CurrentPixel')
         if cur < pprun:
-            print 'XMAP finishing pixels ', cur, ' to ' , pprun
+            print 'XMAP needs to finish pixels ', cur, ' to ' , pprun
             for i in range(pprun-cur):
                 self.next_pixel()
                 time.sleep(0.01)
         return pprun-cur
+
 
     def readmca(self,n=1):
         "Read a Struck MCA"

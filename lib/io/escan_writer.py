@@ -14,14 +14,78 @@ except:
 from string import printable
 from ConfigParser import  ConfigParser
 
+from ..xmap.read_xmap_netcdf import read_xmap_netcdf
 from ..utils import debugtime
+from .file_utils import nativepath
 from ..config import FastMapConfig
 
-from xmap_nc import read_xmap_netcdf
-from file_utils import nativepath
-from mapfolder import (readASCII, readMasterFile, readEnvironFile,
-                        readScanConfig, readROIFile)
+def readASCII(fname, nskip=0, isnumeric=True):
+    dat, header = [], []
+    for line in open(fname,'r').readlines():
+        if line.startswith('#') or line.startswith(';'):
+            header.append(line[:-1])
+            continue
+        if nskip > 0:
+            nskip -= 1
+            header.append(line[:-1])
+            continue
+        if isnumeric:
+            dat.append([float(x) for x in line[:-1].split()])
+        else:
+            dat.append(line[:-1].split())
+    if isnumeric:
+        dat = numpy.array(dat)
+    return header, dat
 
+def readMasterFile(fname):
+    return readASCII(fname, nskip=0, isnumeric=False)
+
+def readEnvironFile(fname):
+    h, d = readASCII(fname, nskip=0, isnumeric=False)
+    return h
+
+def readScanConfig(folder):
+    sfiles = [os.path.join(folder, 'Scan.ini'),
+              os.path.join(folder, 'Scan.cnf')]
+    found = False
+    for sfile in sfiles:
+        if os.path.exists(sfile):
+            found = True
+            break
+    if not found:
+        raise IOError('No configuration file found')
+
+    cp =  ConfigParser()
+    cp.read(sfile)
+    scan = {}
+    for a in cp.options('scan'):
+        scan[a]  = cp.get('scan',a)
+    general = {}
+    for a in cp.options('general'):
+        general[a]  = cp.get('general',a)
+    return scan, general
+
+def readROIFile(hfile):
+    cp =  ConfigParser()
+    cp.read(hfile)
+    output = []
+    try:
+        rois = cp.options('rois')
+    except:
+        print 'rois not found'
+        return []
+
+    for a in cp.options('rois'):
+        if a.lower().startswith('roi'):
+            iroi = int(a[3:])
+            name, dat = cp.get('rois',a).split('|')
+            xdat = [int(i) for i in dat.split()]
+            dat = [(xdat[0], xdat[1]), (xdat[2], xdat[3]),
+                   (xdat[4], xdat[5]), (xdat[6], xdat[7])]
+            output.append((iroi, name.strip(), dat))
+    output = sorted(output)
+    print 'Read ROI data: %i ROIS ' % len(output)
+    return output
 
 off_struck = 0
 off_xmap   = 0
@@ -42,7 +106,7 @@ class EscanWriter(object):
         self.clear()
 
     def ReadMaster(self):
-        self.rowdata = []
+        self.rowdata = None
         self.master_header = None
 
         if self.folder is not None:
@@ -51,8 +115,7 @@ class EscanWriter(object):
                 try:
                     header, rows = readMasterFile(fname)
                 except:
-                    return
-                if len(header) < 1:
+                    print 'Cannot read Scan folder'
                     return
                 self.master_header = header
                 self.rowdata = rows
@@ -62,7 +125,7 @@ class EscanWriter(object):
 
         if self.roidata is None:
             # print 'Read ROI data from ', os.path.join(self.folder,self.ROIFile)
-            self.roidata, calib = readROIFile(os.path.join(self.folder,self.ROIFile))
+            self.roidata = readROIFile(os.path.join(self.folder,self.ROIFile))
 
         if self.scanconf is None:
             fastmap = FastMapConfig()
@@ -116,7 +179,7 @@ class EscanWriter(object):
         self.buff = []
 
     def process(self, maxrow=None, verbose=False):
-        # print '=== Escan Writer: ', self.folder, self.last_row
+        # print '===Escan Writer: ', self.folder, self.last_row
         self.ReadMaster()
         if self.last_row >= len(self.rowdata):
             return 0
@@ -133,8 +196,12 @@ class EscanWriter(object):
             irow = self.last_row
             if verbose:
                print '>EscanWrite.process row %i of %i' % (self.last_row, len(self.rowdata))
+               #print self.rowdata[irow]
 
-            yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
+            try:
+                yval, xmapfile, struckfile, gatherfile, dtime = self.rowdata[irow]
+            except:
+                return
 
             shead,sdata = readASCII(os.path.join(self.folder,struckfile))
             ghead,gdata = readASCII(os.path.join(self.folder,gatherfile))
@@ -145,9 +212,7 @@ class EscanWriter(object):
                     atime = time.ctime(os.stat(os.path.join(self.folder,
                                                             xmapfile)).st_ctime)
                     xmapdat     = read_xmap_netcdf(os.path.join(self.folder,xmapfile),verbose=False)
-                    #print '.',
-                    #if (1+irow) % 20 == 0: print
-                    #sys.stdout.flush()
+
                 except:
                     print 'xmap data failed to read'
                     self.clear()
@@ -155,7 +220,6 @@ class EscanWriter(object):
                 time.sleep(0.03)
             if atime < 0:
                 return 0
-            # print 'EscanWrite.process Found xmapdata in %.3f sec (%s)' % (time.time()-t0, xmapfile)
 
             xmdat = xmapdat.data[:]
             xmicr = xmapdat.inputCounts[:]
@@ -167,9 +231,10 @@ class EscanWriter(object):
             snpts, nscalers = sdata.shape
 
             xnpts = xmdat.shape[0]
-            # npts = min(snpts,gnpts,xnpts)
-            npts = xnpts-1
-            # print gdata.shape, sdata.shape, xmdat.shape, npts
+            npts = min(gnpts, xnpts)
+            pform = "=Write Scan Data row=%i, npts=%i, folder=%s npts(xps, sis, xmap) =(%i, %i, %i)"
+            print pform % (irow, npts, self.folder,
+                           gdata.shape[0], sdata.shape[0], xmdat.shape[0])
 
             if irow == 0:
                 self.npts0 = npts
@@ -218,16 +283,17 @@ class EscanWriter(object):
             add(';---------------------------------')
             add('; %s' % self.legend)
 
-            points = range(1,npts)
+            points = range(npts)
             if off_xmap > 0:
                 points = range(1, npts - off_xmap)
             if irow % 2 != 0:
                 points.reverse()
-            for ipt in points:
-                xval = (gdata[ipt,self.ipos1] + gdata[ipt-1,self.ipos1])/2.0
 
+            for ipt in points:
+                xval = (gdata[ipt+1, self.ipos1] + gdata[ipt,self.ipos1])/2.0
+                # sometimes the struck is mssing data
                 spt = min(ipt, len(sdata)-1)
-                x = ['%.4f %.1f %.1f %.1f' % (xval, sdata[spt,0]*1.e-3,
+                x = ['%.4f %.1f %.1f %.1f' % (xval, sdata[spt, 0]*1.e-3,
                                               1000*xm_tr[ipt].mean(),
                                               1000*xm_tl[ipt].mean()) ]  #
                 x.extend(['%i' %i for i in sdata[spt+off_struck,:]])

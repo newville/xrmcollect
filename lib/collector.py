@@ -5,11 +5,13 @@ import numpy
 import epics
 from threading import Thread
 
+from epics import caput
 from epics.devices.struck import Struck
 
 from .utils import debugtime
 from .io.file_utils import nativepath, fix_filename, increment_filename
 from .io.escan_writer import EscanWriter
+
 from .xps.xps_trajectory import XPSTrajectory
 from .xmap import MultiXMAP
 
@@ -17,11 +19,9 @@ from mapper import mapper
 from config import FastMapConfig
 from mono_control import mono_control
 
-
 USE_XMAP = True
 USE_STRUCK = True
-USE_MONO_CONTROL = True
-
+USE_MONO_CONTROL = False
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -110,7 +110,7 @@ class TrajectoryScan(object):
             os.chdir(os.path.abspath(nativepath(char_value)))
 
     def setWorkingDirectory(self):
-        self.write('=Creating can subfolder: %s / %s' % (os.getcwd(),
+        self.write('=Creating scan folder: %s / %s' % (os.getcwd(),
                                                          self.mapper.basedir))
         basedir = os.path.abspath(nativepath(self.mapper.basedir))
         try:
@@ -135,7 +135,11 @@ class TrajectoryScan(object):
                     subdir = newdir
                     break
 
-        os.mkdir(subdir)
+        try:
+            os.mkdir(subdir)
+        except OSError:
+            pass
+
         self.mapper.workdir = subdir
         self.workdir = os.path.abspath(os.path.join(basedir,subdir))
 
@@ -157,7 +161,7 @@ class TrajectoryScan(object):
             self.xmap.setFileTemplate('%s%s.%4.4d')
             self.xmap.setFileWriteMode(2)
             self.xmap.MCAMode(filename='xmap', # filename,
-                              npulses=npulses)
+                              npulses=npulses-1)
         self.ROI_Written = False
         self.ENV_Written = False
         self.dtime.add('prescan done %s %s' %(repr(USE_STRUCK), repr(USE_XMAP)))
@@ -167,7 +171,7 @@ class TrajectoryScan(object):
         the non-trajectory scan mode"""
         if USE_XMAP:
             self.Wait_XMAPWrite(irow=0)
-            time.sleep(0.25)
+            time.sleep(0.1)
             self.xmap.SpectraMode()
         self.setIdle()
         if USE_XMAP:
@@ -191,7 +195,6 @@ class TrajectoryScan(object):
             self.PV(pvname).put(val)
         self.dtime.add('restore_positions done')
 
-
     def Wait_XMAPWrite(self, irow=0):
         """wait for XMAP to finish writing its data"""
         fnum = irow
@@ -199,8 +202,9 @@ class TrajectoryScan(object):
             # wait for previous netcdf file to be written
             t0 = time.time()
             time.sleep(0.05)
-            while not self.xmap.FileWriteComplete():
+            if not self.xmap.FileWriteComplete():
                 self.xmap.finish_pixels()
+            while not self.xmap.FileWriteComplete():
                 time.sleep(0.1)
                 if time.time()-t0 > 5:
                     self.mapper.message = 'XMAP File Writing Not Complete!'
@@ -271,7 +275,11 @@ class TrajectoryScan(object):
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
 
-        self.xps.DefineLineTrajectories(**linescan)
+        success = self.xps.DefineLineTrajectories(**linescan)
+        if not success:
+            print 'Failed to define trajectory!!'
+            self.postscan()
+
         self.dtime.add('trajectory defined')
 
         self.PV(pos1).put(start1, wait=False)
@@ -312,6 +320,8 @@ class TrajectoryScan(object):
 
             self.mapper.status = 2
             self.dtime.add('before exec traj')
+            mt0 = time.time()
+
             self.ExecuteTrajectory(name=traj, **kw)
             self.mapper.status = 3
             self.dtime.add('after exec traj')
@@ -329,12 +339,13 @@ class TrajectoryScan(object):
             # note:
             #  First WriteRowData will write data from XPS and struck,
             #  Then we wait for the XMAP to finish writing its data.
-            xps_lines, rowinfo = self.WriteRowData(scan_pt=irow,
-                                                   ypos=ypos, npts=npts1)
-            xmap_fnum = self.Wait_XMAPWrite(irow=irow)
-            self.write('Wrote data for row %i' % (irow))
+            nxps, nxmap, rowinfo = self.WriteRowData(scan_pt=irow,
+                                                     ypos=ypos,
+                                                     npts=npts1)
+            if irow % 10 == 0:
+                self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xmap saved')
-            if irow > xmap_fnum:
+            if irow > nxmap:
                 self.write('Missing XMAP File!')
                 irow = irow - 1
             else:
@@ -357,9 +368,9 @@ class TrajectoryScan(object):
     def ExecuteTrajectory(self, name='line', filename='TestMap',
                           scan_pt=1, scantime=10, dimension=1,
                           npulses=11, wait=False, **kw):
-
+        """ run individual trajectory"""
+        t0 = time.time()
         if USE_XMAP:
-            t0 = time.time()
             self.xmap.setFileNumber(scan_pt)
             self.xmap.FileCaptureOn()
             self.xmap.start()
@@ -378,18 +389,16 @@ class TrajectoryScan(object):
                     break
             self.dtime.add('exec: xmap armed? %s ' % (repr(1==self.xmap.Acquiring)))
 
-        # self.mapper.message = "scanning %s" % name
-        self.write('Ready to start trajectory')
-
+        # self.write('Ready to start trajectory')
         scan_thread = Thread(target=self.xps.RunLineTrajectory,
                              kwargs=dict(name=name, save=False),
                              name='scannerthread')
 
         scan_thread.start()
-        self.state = 'scanning'
-        t0 = time.time()
-        self.dtime.add('ExecTraj: traj thread begun')
 
+        self.state = 'scanning'
+        self.dtime.add('ExecTraj: traj thread begun')
+        t0 = time.time()
         if USE_XMAP and not self.ROI_Written:
             xmap_prefix = self.mapconf.get('general', 'xmap')
             fout    = os.path.join(self.workdir, 'ROI.dat')
@@ -409,17 +418,18 @@ class TrajectoryScan(object):
 
         if USE_XMAP:
             self.WriteEscanData()
-        # now wait for scanning thread to complete
-        scan_thread.join()  # max(0.1, scantime-5.0))
 
+        # now wait for scanning thread to complete
+        scan_thread.join()
         while scan_thread.isAlive() and time.time()-t0 < scantime+5.0:
             epics.poll()
             time.sleep(0.002)
+
         self.dtime.add('ExecTraj: Scan Thread complete.')
         time.sleep(0.002)
 
     def WriteEscanData(self):
-        self.escan_saver.folder =self.workdir
+        self.escan_saver.folder = self.workdir
         try:
             new_lines = self.escan_saver.process()
         except:
@@ -451,6 +461,9 @@ class TrajectoryScan(object):
 
     def WriteRowData(self, filename='TestMap', scan_pt=1, ypos=0, npts=None):
         # NOTE:!!  should return here, write files separately.
+
+        if USE_STRUCK:
+            self.struck.stop()
         strk_fname = self.make_filename('struck', scan_pt)
         xmap_fname = self.make_filename('xmap', scan_pt)
         xps_fname  = self.make_filename('xps', scan_pt)
@@ -461,16 +474,26 @@ class TrajectoryScan(object):
         saver_thread.start()
         # self.xps.SaveResults(xps_fname)
 
+        nxmap = 0
         if USE_XMAP:
             xmap_fname = nativepath(self.xmap.getFileNameByIndex(scan_pt))[:-1]
-
-            # print 'would turn off xmap here' # self.xmap.stop()
-            # self.xmap.FileCaptureOff()
+            nxmap = self.Wait_XMAPWrite(irow=scan_pt)
 
         if USE_STRUCK:
-            self.struck.stop()
-            time.sleep(0.1)
-            self.struck.saveMCAdata(fname=strk_fname, npts=npts, ignore_prefix='_')
+            wrote_struck = False
+            counter = 0
+            while not wrote_struck and counter < 10:
+                counter = counter + 1
+                if True: # try:
+                    self.struck.saveMCAdata(fname=strk_fname, ignore_prefix='_')
+                    wrote_struck = True
+                else: # except:
+                    print 'trouble saving struck data.. will retry'
+                    time.sleep(2.00)
+                    print 'Exception Raised: ', sys.exc_info()
+            if not wrote_struck:
+                print "Could not SAVE STRUCK DATA!!!!!"
+
             self.dtime.add('struck saved')
 
         # wait for saving of gathering file to complete
@@ -478,7 +501,7 @@ class TrajectoryScan(object):
         self.dtime.add('xps saved')
         rowinfo = self.make_rowinfo(xmap_fname, strk_fname, xps_fname, ypos=ypos)
         self.dtime.add('Write Row Data: done')
-        return (self.xps.nlines_out, rowinfo)
+        return (self.xps.nlines_out, nxmap, rowinfo)
 
     def make_filename(self, name, number):
         fout = os.path.join(self.workdir, "%s.%4.4i" % (name,number))
