@@ -206,7 +206,6 @@ class H5Writer(object):
 
         if maxrow is None:
             maxrow = len(self.rowdata)
-        print 'process maxrow = ', maxrow
         roiscan = self.h5root['scan']
         dt = debugtime()
         while self.last_row <  maxrow:
@@ -236,11 +235,12 @@ class H5Writer(object):
                 return
             #
             dt.add('read xmap data')
-            xmdat = xmapdat.data[1:]
-            xm_ic = xmapdat.inputCounts[1:]/(1.e-12+xmapdat.outputCounts[1:])
+            xmslice = slice(1, -1)
+            xmdat = xmapdat.data[xmslice]
+            xm_ic = xmapdat.inputCounts[xmslice]/(1.e-12+xmapdat.outputCounts[xmslice])
             # times as integer microseconds
-            xm_tl = (1.e6*xmapdat.liveTime[1:]).astype('int')
-            xm_tr = (1.e6*xmapdat.realTime[1:]).astype('int')
+            xm_tl = (1.e6*xmapdat.liveTime[xmslice]).astype('int')
+            xm_tr = (1.e6*xmapdat.realTime[xmslice]).astype('int')
 
             gnpts = gdata.shape[0]
             snpts = sdata.shape[0]
@@ -262,7 +262,7 @@ class H5Writer(object):
             if npts < 2:
                 print 'not enough data at row ', irow
                 break
-
+            print 'XNPTS / ', xnpts, gnpts, snpts, npts, xnpts==npts
             if xnpts != npts:
                 xm_tr = xm_tr[:npts]
                 xm_tl = xm_tl[:npts]
@@ -276,7 +276,7 @@ class H5Writer(object):
                 xm_tl = xm_tl[::-1]
                 xm_ic = xm_ic[::-1]
                 xmdat = xmdat[::-1]
-                #dt.add('reversed data ')
+                dt.add('reversed data ')
             ix = self.ixaddr
 
             xvals = [(gdata[i, ix] + gdata[i-1, ix])/2.0 for i in points]
@@ -287,24 +287,32 @@ class H5Writer(object):
 
             if irow == 0:
                 self.npts = npts
-                n, ndet, nchans = xmdat.shape
                 xnpts, nmca, nchan = xmdat.shape
                 en_index = np.arange(nchan)
-                off, slo = self.calib['offset'], self.calib['slope']
-
+                off, slo, quad = (self.calib['offset'], self.calib['slope'],
+                                  self.calib['quad'])
+                roi_names = self.h5root['config/rois/name'][:]
+                roi_addrs = self.h5root['config/rois/address'][:]
+                roi_limits = self.h5root['config/rois/limits']
                 for imca in range(nmca):
                     dname = 'det%i' % (imca+1)
                     self.add_group(self.h5root, dname)
                     self.xrf_dets.append(self.h5root[dname])
                     en = 1.0*off[imca] + slo[imca]*en_index
-                    self.add_data(self.h5root[dname], 'energy', en)
+                    self.add_data(self.h5root[dname], 'energy', en,
+                                  attrs={'cal_offset':off[imca],
+                                         'cal_slope': slo[imca],
+                                         'cal_quad': quad[imca]})
+                    self.add_data(self.h5root[dname], 'roi_names', roi_names)
+                    self.add_data(self.h5root[dname], 'roi_addrs', [s % (imca+1) for s in roi_addrs])
+                    self.add_data(self.h5root[dname], 'roi_limits', roi_limits[:,imca,:])
 
                 scan = self.h5root['scan']
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
-
                 for addr in self.roi_addr:
                     det_addr.extend([addr % (i+1) for i in range(nmca)])
+
                 for desc in self.roi_desc:
                     det_desc.extend(["%s (mca%i)" % (desc, i+1)
                                      for i in range(nmca)])
@@ -349,7 +357,7 @@ class H5Writer(object):
             else:
                 rtime = self.xrf_dets[0]['realtime']
                 if rtime.shape[0] <= irow:
-                    nrow = 8*(1+irow/8)
+                    nrow = 16*(1+irow/16)
                     self.resize_arrays(nrow)
                     dt.add('resize data')
 
@@ -366,7 +374,6 @@ class H5Writer(object):
                 xrf['realtime'][irow, :] = xm_tr[:,ixrf]
                 xrf['livetime'][irow, :] = xm_tl[:,ixrf]
                 xrf['dt_factor'][irow, :] = xm_ic[:,ixrf].astype('float32')
-                # dt.add('add rtime, ltime, corr')
                 xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
             dt.add('add xrf data')
             draw = list(sdata[:npts].transpose())
@@ -384,19 +391,16 @@ class H5Writer(object):
                 dcor.extend(icor)
                 sraw.append(np.array(iraw).sum(axis=0))
                 scor.append(np.array(icor).sum(axis=0))
-            # dt.add('made det data')
-
             det_raw[irow, :, :] = np.array(draw).transpose()
             det_cor[irow, :, :] = np.array(dcor).transpose()
             sum_raw[irow, :, :] = np.array(sraw).transpose()
             sum_cor[irow, :, :] = np.array(scor).transpose()
-            #dt.add('add det data')
-
             posvals.append(xm_tr.sum(axis=1).astype('float32') / nmca)
             posvals.append(xm_tl.sum(axis=1).astype('float32') / nmca)
 
             pos[irow, :, :] = np.array(posvals).transpose()
-            dt.add('add positioners')
+            dt.add('add det/pos data')
+            #dt.show()
         try:
             self.resize_arrays()
             dt.add('end of final resize')
@@ -408,7 +412,7 @@ class H5Writer(object):
         "resize all arrays for nrows"
         if nrow is None:
             nrow = self.last_row
-        print 'RESIZE Arrays ', nrow
+        # print 'RESIZE Arrays ', nrow
         # xrf  = self.h5root['xrf_spectra']
 
         old, npts, nchan = self.xrf_dets[0]['data'].shape
@@ -437,25 +441,25 @@ class H5Writer(object):
     def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
         scan = self.h5root['scan']
         NINIT = 4
-        print 'Create Arrays  ! XRF SPECTRA ', NINIT
+        #print 'Create Arrays  ! XRF SPECTRA ', NINIT
         scan.create_dataset('det_raw', (NINIT, npts, nsca),
                             np.int32, compression=2,
                             maxshape=(None, npts, nsca))
 
         scan.create_dataset('det_dtcorr', (NINIT, npts, nsca),
-                            np.float32, compression=2,
+                            np.float32, compression=4,
                             maxshape=(None, npts, nsca))
 
         scan.create_dataset('sum_raw', (NINIT, npts, nsum),
-                            np.int32, compression=2,
+                            np.int32, compression=4,
                             maxshape=(None, npts, nsum))
 
         scan.create_dataset('sum_dtcorr', (NINIT, npts, nsum),
-                            np.float32, compression=2,
+                            np.float32, compression=4,
                             maxshape=(None, npts, nsum))
 
         scan.create_dataset('pos', (NINIT, npts, npos),
-                            np.float32, compression=2,
+                            np.float32, compression=4,
                             maxshape=(None, npts, npos))
         for xrf in self.xrf_dets:
             xrf.create_dataset('realtime', (NINIT, npts),
