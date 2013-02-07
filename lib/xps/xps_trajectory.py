@@ -258,6 +258,13 @@ Line = %f, %f
         # self.xps.GatheringStop(self.ssid)
         db = debugtime()
         ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+        counter = 0
+        while npulses < 1 and counter < 5:
+            counter += 1
+            time.sleep(1.50)
+            ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+            print 'Had to do repeat XPS Gathering: ', ret, npulses, nx
+            
         db.add(' Will Save %i pulses , ret=%i ' % (npulses, ret))
         ret, buff = self.xps.GatheringDataMultipleLinesGet(self.ssid, 0, npulses)
         db.add('MLGet ret=%i, buff_len = %i ' % (ret, len(buff)))
