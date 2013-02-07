@@ -186,7 +186,7 @@ class Counter(object):
     a value that will be counted at each point in the scan"""
     def __init__(self, pvname, label=None):
         self.pv  = PV(pvname)
-        if label == is None:
+        if label is None:
             label = pvname
         self.label = label
         self.clear()
@@ -408,7 +408,7 @@ class StepScan(object):
         if isinstance(counter, Counter):
             self.counters.append(counter)
         else:
-            print 'Cannot add Counter? ', counter)
+            print( 'Cannot add Counter? ', counter)
         self.verified = False
 
     def add_extra_pvs(self, pvs):
