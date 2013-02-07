@@ -13,14 +13,14 @@ class debugtime(object):
         self.times.append((msg,time.time()))
         if verbose:
             sys.stdout.write("%s\n"% msg)
-            
+
     def show(self, writer=None, clear=True):
         if writer is None:
             writer = sys.stdout.write
         writer('%s\n' % self.get_report())
         if clear:
             self.clear()
-            
+        sys.stdout.flush()
 
     def get_report(self):
         m0, t0 = self.times[0]
@@ -28,7 +28,7 @@ class debugtime(object):
         out  = ["# %s  %s " % (m0,time.ctime(t0))]
         lmsg = 0
         for m, t in self.times[1:]:
-            lmsg = max(lmsg, len(m))            
+            lmsg = max(lmsg, len(m))
         m = '#      Message'
         m = m + ' '*(lmsg-len(m))
 
