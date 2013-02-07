@@ -110,7 +110,7 @@ class TrajectoryScan(object):
             os.chdir(os.path.abspath(nativepath(char_value)))
 
     def setWorkingDirectory(self):
-        self.write('=Creating can subfolder: %s / %s' % (os.getcwd(),
+        self.write('=Creating scan folder: %s / %s' % (os.getcwd(),
                                                          self.mapper.basedir))
         basedir = os.path.abspath(nativepath(self.mapper.basedir))
         try:
@@ -155,8 +155,6 @@ class TrajectoryScan(object):
         the proper modes for trajectory scan"""
         if USE_STRUCK:
             self.struck.ExternalMode()
-            # self.struck.InitialChannelAdvance(False)
-
 
         if USE_XMAP:
             # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
@@ -344,7 +342,8 @@ class TrajectoryScan(object):
             nxps, nxmap, rowinfo = self.WriteRowData(scan_pt=irow,
                                                      ypos=ypos,
                                                      npts=npts1)
-            self.write('Wrote %i data points for row %i' % (npts1, irow))
+            if irow % 10 == 0:
+                self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xmap saved')
             if irow > nxmap:
                 self.write('Missing XMAP File!')
@@ -390,7 +389,7 @@ class TrajectoryScan(object):
                     break
             self.dtime.add('exec: xmap armed? %s ' % (repr(1==self.xmap.Acquiring)))
 
-        self.write('Ready to start trajectory')
+        # self.write('Ready to start trajectory')
         scan_thread = Thread(target=self.xps.RunLineTrajectory,
                              kwargs=dict(name=name, save=False),
                              name='scannerthread')
@@ -483,14 +482,15 @@ class TrajectoryScan(object):
         if USE_STRUCK:
             wrote_struck = False
             counter = 0
-            while not wrote_struck and counter < 5:
+            while not wrote_struck and counter < 10:
                 counter = counter + 1
-                try:
-                    self.struck.saveMCAdata(fname=strk_fname, npts=npts+10, ignore_prefix='_')
+                if True: # try:
+                    self.struck.saveMCAdata(fname=strk_fname, ignore_prefix='_')
                     wrote_struck = True
-                except:
+                else: # except:
                     print 'trouble saving struck data.. will retry'
-                    time.sleep(0.5)
+                    time.sleep(2.00)
+                    print 'Exception Raised: ', sys.exc_info()
             if not wrote_struck:
                 print "Could not SAVE STRUCK DATA!!!!!"
 

@@ -14,10 +14,10 @@ except:
 from string import printable
 from ConfigParser import  ConfigParser
 
-from .xmap.read_xmap_netcdf import read_xmap_netcdf
-from .utils import debugtime
-from .io.file_utils import nativepath
-from config import FastMapConfig
+from ..xmap.read_xmap_netcdf import read_xmap_netcdf
+from ..utils import debugtime
+from .file_utils import nativepath
+from ..config import FastMapConfig
 
 def readASCII(fname, nskip=0, isnumeric=True):
     dat, header = [], []
@@ -111,7 +111,6 @@ class EscanWriter(object):
 
         if self.folder is not None:
             fname = os.path.join(nativepath(self.folder), self.MasterFile)
-            print  'EscanWriter Read Scan file ', fname
             if os.path.exists(fname):
                 try:
                     header, rows = readMasterFile(fname)
@@ -180,7 +179,7 @@ class EscanWriter(object):
         self.buff = []
 
     def process(self, maxrow=None, verbose=False):
-        print '===Escan Writer: ', self.folder, self.last_row
+        # print '===Escan Writer: ', self.folder, self.last_row
         self.ReadMaster()
         if self.last_row >= len(self.rowdata):
             return 0
@@ -233,7 +232,9 @@ class EscanWriter(object):
 
             xnpts = xmdat.shape[0]
             npts = min(gnpts, xnpts)
-            print 'Row ', irow, gdata.shape, sdata.shape, xmdat.shape, npts
+            pform = "=Write Scan Data row=%i, npts=%i, folder=%s npts(xps, sis, xmap) =(%i, %i, %i)"
+            print pform % (irow, npts, self.folder,
+                           gdata.shape[0], sdata.shape[0], xmdat.shape[0])
 
             if irow == 0:
                 self.npts0 = npts
