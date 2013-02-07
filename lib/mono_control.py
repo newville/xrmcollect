@@ -1,7 +1,4 @@
 #!/usr/bin/python 
-##
-## Very GSE specific mono feedback 
-##
 import epics
 import time
 from utils import debugtime
@@ -35,6 +32,8 @@ class mono_control(epics.Device):
             self.add_pv("%s%s" % (self._prefix, val), attr=key)
         
     def OptimizeMonoRoll(self):
+        return 
+    def oldOptimizeMonoRoll(self):
         self.FeedbackOff()
         self.roll_fine = 0
         # print 'July2010: Check Mono Roll: Split Sum / Diff ', self.preslit_sum, self.preslit_diff
@@ -58,6 +57,8 @@ class mono_control(epics.Device):
         return
 
     def WaitForShutterOpen(self, timeout=600):
+        pass
+    def oldWaitForShutterOpen(self, timeout=600):
         t0 = time.time()
         while self.Shutter != 1:
             epics.ca.poll()
@@ -67,16 +68,19 @@ class mono_control(epics.Device):
         return self.Shutter == 1
 
     def FeedbackOn(self):
-        self.pitchFB_ON =  1
-        self.pitchFB_Reset = 1
+        pass # self.pitchFB_ON =  1
+        #self.pitchFB_Reset = 1
 
     def FeedbackOff(self):
-        self.pitchFB_ON = 0
+        pass # self.pitchFB_ON = 0
 
     def FeedbackResetOff(self):
-        self.pitchFB_Reset = 0
+        pass # self.pitchFB_Reset = 0
 
     def WaitForFeedbackLocked(self,timeout=1800):
+        return
+    def oldWaitForFeedbackLocked(self,timeout=1800):
+
         self.FeedbackOn()
         t0 = time.time()
         while self.pitchFB_Locked != 1:
@@ -88,6 +92,8 @@ class mono_control(epics.Device):
         return  self.pitchFB_Locked == 1
         
     def CheckMonoPitch(self):
+        pass
+    def oldCheckMonoPitch(self):
         if abs(self.tilt_fine) < 3.50:
             print 'Mono tilt fine adjust looks OK'
         else:
@@ -96,6 +102,8 @@ class mono_control(epics.Device):
         self.FeedbackOn()
 
     def OptimizeMonoPitch(self):
+        pass
+    def oldOptimizeMonoPitch(self):
         print 'Need to Optimize Mono Pitch: '
         self.FeedbackOff()
         self.FeedbackResetOff()
@@ -144,7 +152,7 @@ class mono_control(epics.Device):
 if __name__ == '__main__':
     m = mono_control('13IDA:')
     
-    time.sleep(0.1)
-    x = m.WaitForShutterOpen()
-    x = m.WaitForFeedbackLocked()
-    print x
+    #time.sleep(0.1)
+    #x = m.WaitForShutterOpen()
+    #x = m.WaitForFeedbackLocked()
+    #print x
