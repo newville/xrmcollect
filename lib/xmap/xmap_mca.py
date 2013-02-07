@@ -159,6 +159,9 @@ class MultiXMAP(epics.Device):
         pprun = self.PixelsPerRun
         cur   = self.dxps[0].get('CurrentPixel')
         if cur < pprun:
+            time.sleep(0.1)
+            pprun = self.PixelsPerRun
+            cur   = self.dxps[0].get('CurrentPixel')
             print 'XMAP finishing pixels ', cur, ' to ' , pprun
             for i in range(pprun-cur):
                 self.next_pixel()
