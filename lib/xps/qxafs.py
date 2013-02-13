@@ -96,7 +96,7 @@ class QXAFS_XPS:
         max_accel = 5.0
         ramp = span / 10.0
         
-        ramp_time  = ramp/line_speed
+        ramp_time  = 1.5 * ramp/line_speed
         ramp_accel = line_speed/ramp_time
         count = 1
         self.traj  = ''
@@ -112,15 +112,14 @@ class QXAFS_XPS:
 
         yd_ramp = yd_line = yvelo = 0.00
         xd_ramp, xd_line, xvelo = ramp, span, line_speed
-        
+        # ramp_time = ramp_time*1.5  
         traj = [
-            "%f, %f, %f, %f, %f" % (ramp_time, xd_ramp, 0.8*xvelo, yd_ramp, yvelo),
             "%f, %f, %f, %f, %f" % (ramp_time, xd_ramp,     xvelo, yd_ramp,     0),
             "%f, %f, %f, %f, %f" % (dwelltime, xd_line,     xvelo, yd_line, yvelo),
             "%f, %f, %f, %f, %f" % (ramp_time, xd_ramp,         0, yd_ramp,     0),
             ]
         self.traj = '\n'.join(traj)
-        self.backup_angle = 2*xd_ramp
+        self.backup_angle = xd_ramp
 
     def upload_trajectory(self):
         ftpconn = ftplib.FTP()
@@ -203,7 +202,7 @@ class QXAFS_XPS:
         span = a2 - a1
         print 'Span = ', span, a1, a2
         self.start_angle = a1
-        self.npulses = npulses
+        self.npulses = npulses + 1
         self.dwelltime = dtime
         self.create_trajectory(dwelltime=dtime, span=span)
         self.upload_trajectory()
