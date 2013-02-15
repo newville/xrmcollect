@@ -17,11 +17,11 @@ from .xmap import MultiXMAP
 
 from mapper import mapper
 from config import FastMapConfig
-from mono_control import mono_control
+from set_mono_tilt import set_mono_tilt
 
 USE_XMAP = True
 USE_STRUCK = True
-USE_MONO_CONTROL = False
+USE_MONO_CONTROL = True
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -54,9 +54,9 @@ class TrajectoryScan(object):
         fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
         self.mono_control = None
-        if USE_MONO_CONTROL and 'mono' in conf.get('general'):
-            mono_pref = conf.get('general', 'mono')
-            self.mono_control = mono_control(mono_pref)
+        #if USE_MONO_CONTROL and 'mono' in conf.get('general'):
+        #mono_pref = conf.get('general', 'mono')
+        #self.mono_control = mono_control(mono_pref)
 
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
@@ -332,7 +332,7 @@ class TrajectoryScan(object):
 
             if USE_MONO_CONTROL:
                 try:
-                    self.mono_control.CheckMonoPitch()
+                    set_mono_tilt(timeout=1800)
                 except:
                     pass
 
