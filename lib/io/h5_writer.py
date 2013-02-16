@@ -91,7 +91,7 @@ class H5Writer(object):
 
     def add_data(self, group, name, data, attrs=None, **kws):
         """ creata an hdf5 dataset"""
-        kwargs = {'compression':4}
+        kwargs = {'compression': 4}
         kwargs.update(kws)
         d = group.create_dataset(name, data=data, **kwargs)
         if isinstance(attrs, dict):
@@ -229,25 +229,26 @@ class H5Writer(object):
                     xmfile = path.join(self.folder, xmapfile)
                     xmapdat = read_xmap_netcdf(xmfile, verbose=False)
                 except (IOError, IndexError):
-                    time.sleep(0.10)
+                    time.sleep(0.010)
+
             if atime < 0 or xmapdat is None:
                 print 'Failed to read xmap data for row ', self.last_row
                 return
             #
             dt.add('read xmap data')
-            xmslice = slice(1, -1)
-            xmdat = xmapdat.data[xmslice]
-            xm_ic = xmapdat.inputCounts[xmslice]/(1.e-12+xmapdat.outputCounts[xmslice])
+            xmdat = xmapdat.data[:]
+            xmicr = xmapdat.inputCounts[:]
+            xmocr = xmapdat.outputCounts[:]
+            xm_ic = xmapdat.inputCounts[:]/(1.e-12+xmapdat.outputCounts[:])
             # times as integer microseconds
-            xm_tl = (1.e6*xmapdat.liveTime[xmslice]).astype('int')
-            xm_tr = (1.e6*xmapdat.realTime[xmslice]).astype('int')
+            xm_tl = (1.e6*xmapdat.liveTime[:]).astype('int')
+            xm_tr = (1.e6*xmapdat.realTime[:]).astype('int')
 
-            gnpts = gdata.shape[0]
-            snpts = sdata.shape[0]
+            gnpts, ngather  = gdata.shape
+            snpts, nscalers = sdata.shape
             xnpts = xmdat.shape[0]
-            npts = min(snpts, gnpts, xnpts)
-            # ok this is a hack -- try to recover from missing
-            # struck data.
+            npts = min(gnpts, xnpts)
+
             if irow  > 0 and npts != self.npts:
                 if (snpts > self.npts/2.) and (snpts < self.npts):
                     sdata = list(sdata)
@@ -262,7 +263,10 @@ class H5Writer(object):
             if npts < 2:
                 print 'not enough data at row ', irow
                 break
-            print 'XNPTS / ', xnpts, gnpts, snpts, npts, xnpts==npts
+            pform = "=Write Scan Data row=%i, npts=%i, folder=%s npts(xps, sis, xmap) =(%i, %i, %i)"
+            print pform % (irow, npts, self.folder,
+                           gdata.shape[0], sdata.shape[0], xmdat.shape[0])
+
             if xnpts != npts:
                 xm_tr = xm_tr[:npts]
                 xm_tl = xm_tl[:npts]
@@ -307,6 +311,19 @@ class H5Writer(object):
                     self.add_data(self.h5root[dname], 'roi_addrs', [s % (imca+1) for s in roi_addrs])
                     self.add_data(self.h5root[dname], 'roi_limits', roi_limits[:,imca,:])
 
+                # 'virtual detector' for sum:
+                dname = 'detsum'
+                self.add_group(self.h5root, dname)
+                en = 1.0*off[0] + slo[0]*en_index
+                self.add_data(self.h5root[dname], 'energy', en,
+                              attrs={'cal_offset':off[0],
+                                     'cal_slope': slo[0],
+                                     'cal_quad': quad[0]})
+                self.add_data(self.h5root[dname], 'roi_names', roi_names)
+                self.add_data(self.h5root[dname], 'roi_addrs', [s % 1 for s in roi_addrs])
+                self.add_data(self.h5root[dname], 'roi_limits', roi_limits[:,0,:])
+
+                # scan
                 scan = self.h5root['scan']
                 det_addr = [i.strip() for i in shead[-2][1:].split('|')]
                 det_desc = [i.strip() for i in shead[-1][1:].split('|')]
@@ -354,7 +371,7 @@ class H5Writer(object):
                 self.create_arrays(npts, npos, nsca, nsum, nmca, nchan)
 
                 dt.add('add row 0 ')
-            else:
+            else: # Not Row 0
                 rtime = self.xrf_dets[0]['realtime']
                 if rtime.shape[0] <= irow:
                     nrow = 16*(1+irow/16)
@@ -370,11 +387,26 @@ class H5Writer(object):
 
             #print 'DET 0 realtime : ', self.xrf_dets[0]['realtime']
             #print 'xmap data shape: ', xm_tr.shape, xmdat.shape
+            total_corr = None
             for ixrf, xrf in enumerate(self.xrf_dets):
+                dtcorr = xm_ic[:,ixrf].astype('float32')
+                nx = dtf.shape[0]
+                _dtcorr_ = dtf.reshape((nx, 1))
                 xrf['realtime'][irow, :] = xm_tr[:,ixrf]
                 xrf['livetime'][irow, :] = xm_tl[:,ixrf]
-                xrf['dt_factor'][irow, :] = xm_ic[:,ixrf].astype('float32')
+                xrf['dt_factor'][irow, :] = dtcorr
                 xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
+                if total is None:
+                    total = xmdat[:,ixrf,:] * _dtcorr_
+                else:
+                    total = total + xmdat[:,ixrf,:] * _dtcorr_
+
+            xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
+            #
+            # here, we would add the summed data to detsum..
+            self.h5root['detsum']['data_dtcorr'][irow, :] = total.astype('int')
+            #
+
             dt.add('add xrf data')
             draw = list(sdata[:npts].transpose())
             # print "======== NPTS ", sdata.shape, xmdat.shape, npts, nmca
@@ -406,13 +438,13 @@ class H5Writer(object):
             dt.add('end of final resize')
         except:
             pass
-        dt.show()
+        #dt.show()
 
     def resize_arrays(self, nrow=None):
         "resize all arrays for nrows"
         if nrow is None:
             nrow = self.last_row
-        # print 'RESIZE Arrays ', nrow
+        print 'RESIZE Arrays ', nrow
         # xrf  = self.h5root['xrf_spectra']
 
         old, npts, nchan = self.xrf_dets[0]['data'].shape
@@ -438,44 +470,58 @@ class H5Writer(object):
         sum_raw.resize((nrow, npts, nsum))
         sum_cor.resize((nrow, npts, nsum))
 
+        s   = self.h5root['detsum']
+        raw = s['data_dtcorr']
+        old, nx, ny = raw.shape
+        raw.resize((nrow, nx, ny))
+
+
     def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
         scan = self.h5root['scan']
-        NINIT = 4
+        NINIT = 16
+        COMP = 3
         #print 'Create Arrays  ! XRF SPECTRA ', NINIT
         scan.create_dataset('det_raw', (NINIT, npts, nsca),
-                            np.int32, compression=2,
+                            np.int32, compression=COMP,
                             maxshape=(None, npts, nsca))
 
         scan.create_dataset('det_dtcorr', (NINIT, npts, nsca),
-                            np.float32, compression=4,
+                            np.float32, compression=COMP,
                             maxshape=(None, npts, nsca))
 
         scan.create_dataset('sum_raw', (NINIT, npts, nsum),
-                            np.int32, compression=4,
+                            np.int32, compression=COMP,
                             maxshape=(None, npts, nsum))
 
         scan.create_dataset('sum_dtcorr', (NINIT, npts, nsum),
-                            np.float32, compression=4,
+                            np.float32, compression=COMP,
                             maxshape=(None, npts, nsum))
 
         scan.create_dataset('pos', (NINIT, npts, npos),
-                            np.float32, compression=4,
+                            np.float32, compression=COMP,
                             maxshape=(None, npts, npos))
+
+        detsum = self.h5root['detsum']
+        detsum.create_dataset('data_dtcorr', (NINIT, npts, nchan),
+                              np.int16, compression=COMP,
+                              maxshape=(None, npts, nchan))
+
+
         for xrf in self.xrf_dets:
             xrf.create_dataset('realtime', (NINIT, npts),
-                               np.int, compression=2,
+                               np.int, compression=COMP,
                                maxshape=(None, npts))
 
             xrf.create_dataset('livetime', (NINIT, npts),
-                               np.int, compression=2,
+                               np.int, compression=COMP,
                                maxshape=(None, npts))
 
             xrf.create_dataset('dt_factor', (NINIT, npts),
-                               np.float32, compression=2,
+                               np.float32, compression=COMP,
                                maxshape=(None, npts))
 
             xrf.create_dataset('data', (NINIT, npts, nchan),
-                               np.int16, compression=2,
+                               np.int16, compression=COMP,
                                maxshape=(None, npts, nchan))
 
 
