@@ -264,8 +264,8 @@ class H5Writer(object):
                 print 'not enough data at row ', irow
                 break
             pform = "=Write Scan Data row=%i, npts=%i, folder=%s npts(xps, sis, xmap) =(%i, %i, %i)"
-            print pform % (irow, npts, self.folder,
-                           gdata.shape[0], sdata.shape[0], xmdat.shape[0])
+            #print pform % (irow, npts, self.folder,
+            #               gdata.shape[0], sdata.shape[0], xmdat.shape[0])
 
             if xnpts != npts:
                 xm_tr = xm_tr[:npts]
@@ -311,8 +311,8 @@ class H5Writer(object):
                     self.add_data(self.h5root[dname], 'roi_addrs', [s % (imca+1) for s in roi_addrs])
                     self.add_data(self.h5root[dname], 'roi_limits', roi_limits[:,imca,:])
 
-                # 'virtual detector' for sum:
-                dname = 'detsum'
+                # 'virtual detector' for corrected sum:
+                dname = 'detsum_corr'
                 self.add_group(self.h5root, dname)
                 en = 1.0*off[0] + slo[0]*en_index
                 self.add_data(self.h5root[dname], 'energy', en,
@@ -374,7 +374,7 @@ class H5Writer(object):
             else: # Not Row 0
                 rtime = self.xrf_dets[0]['realtime']
                 if rtime.shape[0] <= irow:
-                    nrow = 16*(1+irow/16)
+                    nrow = 64*(1+irow/64)
                     self.resize_arrays(nrow)
                     dt.add('resize data')
 
@@ -385,27 +385,22 @@ class H5Writer(object):
             sum_raw = scan['sum_raw']
             sum_cor = scan['sum_dtcorr']
 
-            #print 'DET 0 realtime : ', self.xrf_dets[0]['realtime']
             #print 'xmap data shape: ', xm_tr.shape, xmdat.shape
-            total_corr = None
+            total = None
             for ixrf, xrf in enumerate(self.xrf_dets):
                 dtcorr = xm_ic[:,ixrf].astype('float32')
-                nx = dtf.shape[0]
-                _dtcorr_ = dtf.reshape((nx, 1))
+                corr = dtcorr.reshape((dtcorr.shape[0], 1))
                 xrf['realtime'][irow, :] = xm_tr[:,ixrf]
                 xrf['livetime'][irow, :] = xm_tl[:,ixrf]
                 xrf['dt_factor'][irow, :] = dtcorr
                 xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
                 if total is None:
-                    total = xmdat[:,ixrf,:] * _dtcorr_
+                    total = xmdat[:,ixrf,:] * corr
                 else:
-                    total = total + xmdat[:,ixrf,:] * _dtcorr_
+                    total = total + xmdat[:,ixrf,:] * corr
 
-            xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
-            #
-            # here, we would add the summed data to detsum..
-            self.h5root['detsum']['data_dtcorr'][irow, :] = total.astype('int')
-            #
+            # here, we add the total dead-time-corrected data to detsum.
+            self.h5root['detsum_corr']['data'][irow, :] = total.astype('int')
 
             dt.add('add xrf data')
             draw = list(sdata[:npts].transpose())
@@ -444,7 +439,6 @@ class H5Writer(object):
         "resize all arrays for nrows"
         if nrow is None:
             nrow = self.last_row
-        print 'RESIZE Arrays ', nrow
         # xrf  = self.h5root['xrf_spectra']
 
         old, npts, nchan = self.xrf_dets[0]['data'].shape
@@ -470,16 +464,16 @@ class H5Writer(object):
         sum_raw.resize((nrow, npts, nsum))
         sum_cor.resize((nrow, npts, nsum))
 
-        s   = self.h5root['detsum']
-        raw = s['data_dtcorr']
+        s   = self.h5root['detsum_corr']
+        raw = s['data']
         old, nx, ny = raw.shape
         raw.resize((nrow, nx, ny))
-
+        print 'Resized to ', nrow
 
     def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
         scan = self.h5root['scan']
         NINIT = 16
-        COMP = 3
+        COMP = 4
         #print 'Create Arrays  ! XRF SPECTRA ', NINIT
         scan.create_dataset('det_raw', (NINIT, npts, nsca),
                             np.int32, compression=COMP,
@@ -501,8 +495,8 @@ class H5Writer(object):
                             np.float32, compression=COMP,
                             maxshape=(None, npts, npos))
 
-        detsum = self.h5root['detsum']
-        detsum.create_dataset('data_dtcorr', (NINIT, npts, nchan),
+        detsum = self.h5root['detsum_corr']
+        detsum.create_dataset('data', (NINIT, npts, nchan),
                               np.int16, compression=COMP,
                               maxshape=(None, npts, nchan))
 
