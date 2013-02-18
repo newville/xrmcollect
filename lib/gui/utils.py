@@ -35,6 +35,13 @@ def addtoMenu(parent, menu, label, longtext, action=None):
     if hasattr(action, '__call__'):
         wx.EVT_MENU(parent, wid, action)
 
+def add_choice(panel, choices, default=0, action=None, **kws):
+    "add simple button with bound action"
+    c = wx.Choice(panel, -1,  choices=choices, **kws)
+    c.Select(default)
+    c.Bind(wx.EVT_CHOICE, action)
+    return c
+
 def popup(parent, message, title, style=None):
     """generic popup message dialog, returns
     output of MessageDialog.ShowModal()
@@ -44,7 +51,7 @@ def popup(parent, message, title, style=None):
     dlg = wx.MessageDialog(parent, message, title, style)
     ret = dlg.ShowModal()
     dlg.Destroy()
-    return ret    
+    return ret
 
 def empty_bitmap(width, height, value=255):
     "return empty wx.BitMap"
@@ -100,7 +107,7 @@ def FileSave(parent, message, default_file=None,
 
     if default_dir is None:
         default_dir = os.getcwd()
-        
+
     dlg = wx.FileDialog(parent, message=message,
                         defaultFile=default_file,
                         wildcard=wildcard,
@@ -115,7 +122,7 @@ def SelectWorkdir(parent,  message='Select Working Folder...'):
     "prompt for and change into a working directory "
     dlg = wx.DirDialog(parent, message,
                        style=wx.DD_DEFAULT_STYLE|wx.DD_CHANGE_DIR)
-    
+
     path = os.path.abspath(os.curdir)
     dlg.SetPath(path)
     if  dlg.ShowModal() == wx.ID_CANCEL:
@@ -123,8 +130,8 @@ def SelectWorkdir(parent,  message='Select Working Folder...'):
     path = os.path.abspath(dlg.GetPath())
     dlg.Destroy()
     os.chdir(path)
-    return path                        
-                
+    return path
+
 class NumericCombo(wx.ComboBox):
     """
     Numeric Combo: ComboBox with numeric-only choices
@@ -137,7 +144,7 @@ class NumericCombo(wx.ComboBox):
         schoices = [self.fmt % i for i in self.choices]
         wx.ComboBox.__init__(self, parent, -1, '', (-1, -1), (width, -1),
                              schoices, wx.CB_DROPDOWN|wx.TE_PROCESS_ENTER)
-        
+
         init = min(init, len(self.choices))
         self.SetStringSelection(schoices[init])
         self.Bind(wx.EVT_TEXT_ENTER, self.OnEnter)
@@ -153,7 +160,7 @@ class NumericCombo(wx.ComboBox):
         self.Clear()
         self.AppendItems([self.fmt % i for i in self.choices])
         self.SetSelection(self.choices.index(thisval))
-    
+
 class SimpleText(wx.StaticText):
     "simple static text wrapper"
     def __init__(self, parent, label, minsize=None,
@@ -171,7 +178,7 @@ class SimpleText(wx.StaticText):
             self.SetForegroundColour(colour)
         if bgcolour is not None:
             self.SetBackgroundColour(colour)
-    
+
 class HyperText(wx.StaticText):
     """HyperText is a simple extension of wx.StaticText that
 

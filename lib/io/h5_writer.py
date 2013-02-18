@@ -468,7 +468,7 @@ class H5Writer(object):
         raw = s['data']
         old, nx, ny = raw.shape
         raw.resize((nrow, nx, ny))
-        print 'Resized to ', nrow
+        # print 'Resized to ', nrow
 
     def create_arrays(self, npts, npos, nsca, nsum, nmca, nchan):
         scan = self.h5root['scan']
