@@ -26,7 +26,7 @@ def find_peak_intensity(ctrl_pv, read_pv, delay_time=0.050,
 
     caput(ctrl_pv, ctrl_best)
 
-def set_mono_tilt(timeout=3600.0):
+def set_mono_tilt(timeout=3600.0, force=False):
     # adjust IDE mono tilt and roll DAC to maximize mono pitch
     i0_pv    = '13IDE:IP330_1.VAL'
     tilt_pv  = '13IDA:DAC1_7.VAL'
@@ -38,8 +38,9 @@ def set_mono_tilt(timeout=3600.0):
     except ValueError:
         last_ts = 0
 
-    if time.time() - last_ts < timeout:
-        return
+    if not force:
+        if time.time() - last_ts < timeout:
+            return
     
     # find best tilt value
     find_peak_intensity(tilt_pv, i0_pv, 
