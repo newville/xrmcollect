@@ -1,7 +1,7 @@
 import time
 from epics import caget, caput
 
-def find_peak_intensity(ctrl_pv, read_pv, delay_time=0.050, 
+def find_peak_intensity(ctrl_pv, read_pv, delay_time=0.10, 
                         delta=0.025, npoints=50, minval=0.1):
 
     # find value for ctrl pv (ie, DAC) that gives
