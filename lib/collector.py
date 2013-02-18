@@ -21,7 +21,7 @@ from set_mono_tilt import set_mono_tilt
 
 USE_XMAP = True
 USE_STRUCK = True
-USE_MONO_CONTROL = True
+USE_MONO_CONTROL = False
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -53,10 +53,6 @@ class TrajectoryScan(object):
         basedir     = conf.get('general', 'basedir')
         fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
-        self.mono_control = None
-        #if USE_MONO_CONTROL and 'mono' in conf.get('general'):
-        #mono_pref = conf.get('general', 'mono')
-        #self.mono_control = mono_control(mono_pref)
 
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
@@ -332,7 +328,7 @@ class TrajectoryScan(object):
 
             if USE_MONO_CONTROL:
                 try:
-                    set_mono_tilt(timeout=1800)
+                    set_mono_tilt(timeout=7200)
                 except:
                     pass
 
@@ -552,6 +548,8 @@ class TrajectoryScan(object):
     def StartScan(self):
         self.dtime.clear()
         self.setWorkingDirectory()
+        if USE_MONO_CONTROL:
+            set_mono_tilt(force=True)
 
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
         self.mapper.message = 'preparing scan...'
