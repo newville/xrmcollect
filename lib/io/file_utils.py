@@ -96,12 +96,11 @@ def increment_filename(inpfile,ndigits=3, delim='.'):
 
     dirname,  filename = os.path.split(inpfile)
     base, ext = os.path.splitext(filename)
-    base, ext = '', ''
-    base = filename.split(delim, 1)
-    if len(base) == 2:
-        base, ext = base
-        
-    ext   = ext[1:]
+    if ext == '':
+        ext = '.000'
+
+    if ext.startswith('.'):
+        ext   = ext[1:]
     if ndigits < 3:
         ndigits = 3
     form  = "%%.%ii" % (ndigits)
