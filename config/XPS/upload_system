@@ -1,12 +1,20 @@
 #!/usr/bin/python 
+import sys
+
 import ftplib
 from cStringIO import StringIO
 
+
+fname = 'system.ini'
+
+if len(sys.argv) > 1:
+    fname = sys.argv[1]
+    
 host = '164.54.160.180'
 user = 'Administrator'
 passwd = 'Administrator'
 
-f = open('system.ini','r')
+f = open(fname,'r')
 data = f.read()
 f.close()
 
@@ -16,7 +24,7 @@ ftpconn.connect(host)
 ftpconn.login(user, passwd)
 
 ftpconn.cwd('Config')
-ftpconn.storbinary('STOR system.ini', StringIO(data))
-
+ftpconn.storbinary('STOR %s' % fname, StringIO(data))
 ftpconn.close()
 
+print 'Uploaded %s -- ready for reboot?' % fname

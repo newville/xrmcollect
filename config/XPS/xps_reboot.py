@@ -23,7 +23,7 @@ socketID = xps.TCP_ConnectToServer(config.host, config.port, config.timeout)
 xps.Login(socketID, config.user, config.passwd)
 #         
 # print socketID
-# 
+ 
 xps.CloseAllOtherSockets(socketID)
 print 'Rebooting XPS....'
 xps.Reboot(socketID)
@@ -36,7 +36,7 @@ xps.Login(socketID, config.user, config.passwd)
 
 print 'Reconnected with socketID = ', socketID
 
-time.sleep(3.0)
+time.sleep(1.0)
 groupNames = ('FINE', 'THETA', 'COARSEX', 'COARSEY', 'COARSEZ', 'DETX')
 actions =  ('GroupInitialize', 'GroupHomeSearch', 'GroupStatusGet')
 actions =  ('GroupInitialize', 'GroupStatusGet')
