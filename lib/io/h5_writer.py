@@ -18,6 +18,25 @@ from mapfolder import (readASCII, readMasterFile,
                        readEnvironFile, parseEnviron,
                        readROIFile)
 
+def isH5XRM(fname):
+    "return whether fname is a valid HDF5 Map file"
+    valid_h5xrm = False
+    try:
+        fh = h5py.File(fname)
+        xrfmap = fh['/xrf_map']
+        tmp = xrfmap.attrs['Version'], xrfmap.attrs['Beamline']
+        tmp = xrfmap['config'], xrfmap['scan']
+        valid_h5xrm = True
+    except:
+        pass
+    finally:
+        fh.close()
+    return valid_h5xrm
+
+def hasData(h5file, groupname='det1'):
+    "return whether an XRM HDF5 filehandle has the named data group"
+    return groupname in h5file['/xrf_map']
+
 class H5Writer(object):
     """ Write HDF5 file from raw XRF map"""
 
@@ -26,11 +45,11 @@ class H5Writer(object):
     ROIFile    = 'ROI.dat'
     MasterFile = 'Master.dat'
 
-    h5_attrs = {'Version': '1.2.0',
-                'Title': 'Epics Scan Data',
-                'Beamline': 'GSECARS, 13-IDE / APS',
-                'Scan_Type': 'Fast Map',
-                'Correct_Deadtime': 'True'}
+    h5xrm_attrs = {'Version': '1.2.0',
+                   'Title': 'Epics Scan Data',
+                   'Beamline': 'GSECARS, 13-IDE / APS',
+                   'Scan_Type': 'FastMap',
+                   'Correct_Deadtime': 'True'}
 
     def __init__(self, folder=None, **kw):
         self.folder = folder
@@ -73,7 +92,7 @@ class H5Writer(object):
             self.start_time = stime.replace('started at','').strip()
 
         cfile = FastMapConfig()
-        cfile.Read(path.join(self.folder, 'Scan.ini'))
+        cfile.Read(path.join(self.folder, self.ScanFile))
         self.mapconf = cfile.config
 
         self.filename = self.mapconf['scan']['filename']
@@ -104,7 +123,10 @@ class H5Writer(object):
 
     def add_config(self, root, config):
         "add ROI, DXP Settings, and Config data"
-        group = self.add_group(root, 'config')
+        group = self.h5root['config']
+
+        scantext = open(path.join(self.folder, self.ScanFile), 'r').read()
+        group.create_dataset('scanfile', data=scantext)
 
         for name, sect in (('scan', 'scan'),
                            ('general', 'general'),
@@ -152,9 +174,10 @@ class H5Writer(object):
         self.add_data(grp, 'address',  env_addr)
         self.add_data(grp, 'value',     env_val)
 
-    def begin_h5file(self):
+    def begin_h5file(self, folder=''):
         """open and start writing to h5file:
         important: only run this once!"""
+        print 'This is begin h5'
         if self.h5file is not None or self.folder is None:
             return
 
@@ -184,16 +207,17 @@ class H5Writer(object):
 
         attrs = {'Dimension':dimension,
                  'Stop_Time':self.stop_time,
-                 'Start_Time':self.start_time}
-        attrs.update(self.h5_attrs)
+                 'Start_Time':self.start_time,
+                 'RawData_Folder': folder}
+        attrs.update(self.h5xrm_attrs)
 
         self.h5root = self.add_group(self.h5file,
                                      'xrf_map', attrs=attrs)
 
-        self.add_config(self.h5root, mapconf)
         self.add_group(self.h5root, 'scan')
+        self.add_group(self.h5root, 'config')
+        self.add_config(self.h5root, mapconf)
         self.xrf_dets = []
-        print ' begin h5 file done'
 
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
@@ -237,12 +261,11 @@ class H5Writer(object):
             #
             dt.add('read xmap data')
             xmdat = xmapdat.data[:]
-            xmicr = xmapdat.inputCounts[:]
-            xmocr = xmapdat.outputCounts[:]
-            xm_ic = xmapdat.inputCounts[:]/(1.e-12+xmapdat.outputCounts[:])
+            xm_outcts = xmapdat.outputCounts[:]
+            xm_dtfact = xmapdat.inputCounts[:]/(1.e-12+xmapdat.outputCounts[:])
             # times as integer microseconds
-            xm_tl = (1.e6*xmapdat.liveTime[:]).astype('int')
-            xm_tr = (1.e6*xmapdat.realTime[:]).astype('int')
+            xm_tlive = (1.e6*xmapdat.liveTime[:]).astype('int')
+            xm_treal = (1.e6*xmapdat.realTime[:]).astype('int')
 
             gnpts, ngather  = gdata.shape
             snpts, nscalers = sdata.shape
@@ -268,17 +291,19 @@ class H5Writer(object):
             #               gdata.shape[0], sdata.shape[0], xmdat.shape[0])
 
             if xnpts != npts:
-                xm_tr = xm_tr[:npts]
-                xm_tl = xm_tl[:npts]
-                xm_ic = xm_ic[:npts]
+                xm_treal = xm_treal[:npts]
+                xm_tlive = xm_tlive[:npts]
+                xm_outcts = xm_outcts[:npts]
+                xm_dtfact = xm_dtfact[:npts]
                 xmdat = xmdat[:npts]
 
             points = range(1, npts+1)
             if irow % 2 != 0:
                 points.reverse()
-                xm_tr = xm_tr[::-1]
-                xm_tl = xm_tl[::-1]
-                xm_ic = xm_ic[::-1]
+                xm_treal = xm_treal[::-1]
+                xm_tlive = xm_tlive[::-1]
+                xm_outcts = xm_outcts[::-1]
+                xm_dtfact = xm_dtfact[::-1]
                 xmdat = xmdat[::-1]
                 dt.add('reversed data ')
             ix = self.ixaddr
@@ -385,15 +410,16 @@ class H5Writer(object):
             sum_raw = scan['sum_raw']
             sum_cor = scan['sum_dtcorr']
 
-            #print 'xmap data shape: ', xm_tr.shape, xmdat.shape
+            #print 'xmap data shape: ', xm_treal.shape, xmdat.shape
             total = None
             for ixrf, xrf in enumerate(self.xrf_dets):
-                dtcorr = xm_ic[:,ixrf].astype('float32')
+                dtcorr = xm_dtfact[:,ixrf].astype('float32')
                 corr = dtcorr.reshape((dtcorr.shape[0], 1))
-                xrf['realtime'][irow, :] = xm_tr[:,ixrf]
-                xrf['livetime'][irow, :] = xm_tl[:,ixrf]
-                xrf['dt_factor'][irow, :] = dtcorr
-                xrf['data'][irow, :, :] = xmdat[:,ixrf,:]
+                xrf['dtfactor'][irow, :]  = dtcorr
+                xrf['realtime'][irow, :]  = xm_treal[:,ixrf]
+                xrf['livetime'][irow, :]  = xm_tlive[:,ixrf]
+                xrf['outcounts'][irow, :] = xm_outcts[:, ixrf]
+                xrf['data'][irow, :, :]   = xmdat[:,ixrf,:]
                 if total is None:
                     total = xmdat[:,ixrf,:] * corr
                 else:
@@ -412,7 +438,7 @@ class H5Writer(object):
             for slices in self.roi_slices:
                 iraw = [xmdat[:, i, slices[i]].sum(axis=1)
                         for i in range(nmca)]
-                icor = [xmdat[:, i, slices[i]].sum(axis=1)*xm_ic[:, i]
+                icor = [xmdat[:, i, slices[i]].sum(axis=1)*xm_dtfact[:, i]
                         for i in range(nmca)]
                 draw.extend(iraw)
                 dcor.extend(icor)
@@ -422,8 +448,8 @@ class H5Writer(object):
             det_cor[irow, :, :] = np.array(dcor).transpose()
             sum_raw[irow, :, :] = np.array(sraw).transpose()
             sum_cor[irow, :, :] = np.array(scor).transpose()
-            posvals.append(xm_tr.sum(axis=1).astype('float32') / nmca)
-            posvals.append(xm_tl.sum(axis=1).astype('float32') / nmca)
+            posvals.append(xm_treal.sum(axis=1).astype('float32') / nmca)
+            posvals.append(xm_tlive.sum(axis=1).astype('float32') / nmca)
 
             pos[irow, :, :] = np.array(posvals).transpose()
             dt.add('add det/pos data')
@@ -443,7 +469,7 @@ class H5Writer(object):
 
         old, npts, nchan = self.xrf_dets[0]['data'].shape
         for xrf in self.xrf_dets:
-            for aname in ('livetime', 'realtime', 'dt_factor'):
+            for aname in ('livetime', 'realtime', 'outcounts', 'dtfactor'):
                 xrf[aname].resize((nrow, npts))
             xrf['data'].resize((nrow, npts, nchan))
 
@@ -510,7 +536,11 @@ class H5Writer(object):
                                np.int, compression=COMP,
                                maxshape=(None, npts))
 
-            xrf.create_dataset('dt_factor', (NINIT, npts),
+            xrf.create_dataset('dtfactor', (NINIT, npts),
+                               np.float32, compression=COMP,
+                               maxshape=(None, npts))
+
+            xrf.create_dataset('outcounts', (NINIT, npts),
                                np.float32, compression=COMP,
                                maxshape=(None, npts))
 
