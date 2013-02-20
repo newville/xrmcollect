@@ -17,9 +17,9 @@ import time
 import getopt
 from threading import Thread
 import epics
-# from epics.devices.struck import Struck
-from struck import Struck
-from file_utils import increment_filename
+from epics.devices.struck import Struck
+
+from epicscollect.io.file_utils import increment_filename
 import ftplib
 import numpy as np
 
@@ -48,14 +48,14 @@ class QXAFS_XPS:
     gather_outputs = ['MONO.THETA.SetpointPosition',
                       'MONO.THETA.CurrentPosition',
                       'MONO.THETA.FollowingError',
-                      'MONO.THETA.SetpointVelocity',                      
-                      'MONO.THETA.CurrentVelocity',                      
-                      'MONO.THETA.SetpointAcceleration',                      
-                      'MONO.THETA.CurrentAcceleration',                      
+                      'MONO.THETA.SetpointVelocity',
+                      'MONO.THETA.CurrentVelocity',
+                      'MONO.THETA.SetpointAcceleration',
+                      'MONO.THETA.CurrentAcceleration',
                       'MONO.HEIGHT.CurrentPosition',
                       ]
-    
-    def __init__(self, mono_pv='13IDA:m65', 
+
+    def __init__(self, mono_pv='13IDA:m65',
                  energy_pv='13IDE:En:', use_undulator=True):
         self.xps = XPS()
         self.mono =  epics.Motor(mono_pv)
@@ -75,7 +75,7 @@ class QXAFS_XPS:
         time.sleep(0.25)
         self.xps.GroupMotionEnable(self.sid, self.group_name)
 
-      
+
     def create_trajectory(self, dwelltime=10, span=1.00):
         """create a PVT trajectory file for a single linear motion
         of length 'span' and time 'dt', with an offset ramp distance of 'ramp'
@@ -87,7 +87,7 @@ class QXAFS_XPS:
 
         max_accel = 50.0
         ramp = span / 10.0
-        
+
         ramp_time  = 1.5 * ramp/line_speed
         ramp_accel = line_speed/ramp_time
         count = 1
@@ -103,7 +103,7 @@ class QXAFS_XPS:
 
         yd_ramp = yd_line = yvelo = 0.00
         xd_ramp, xd_line, xvelo = ramp, span, line_speed
-        # ramp_time = ramp_time*1.5  
+        # ramp_time = ramp_time*1.5
         traj = [
             "%f, %f, %f, %f, %f" % (ramp_time, xd_ramp,     xvelo, yd_ramp,     0),
             "%f, %f, %f, %f, %f" % (dwelltime, xd_line,     xvelo, yd_line, yvelo),
@@ -111,6 +111,29 @@ class QXAFS_XPS:
             ]
         self.traj = traj
         self.backup_angle = xd_ramp
+
+
+    def create_sinewave_traj(self, period=1.0, npts=100, n=10, yrange=1):
+        """create sine wave trajectory:
+        arguments
+        ----------
+        period   time (sec) for 1 oscillation
+        n        number of periods
+        npts     number of pulses per period
+        yrange   amplitude of oscillation
+        """
+        npulses = n*npts
+        i = arange(npulses)
+
+        dt  = period / npts
+        amp = yrange /2
+        velo = amp * sin(i*2*yamp*dt)
+        dist = dt * velo
+
+        self.traj = []
+        for d, v in zip(dist, velo):
+            self.traj.append("%.6f, %.6f, %.6f, 0, 0" % (dt, d, v))
+        self.backup_angle=0
 
     def read_trajectory_file(self, fname):
         f = open(fname, 'r')
@@ -157,7 +180,7 @@ class QXAFS_XPS:
             time.sleep(1.0)
             ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.sid)
             print 'Had to do repeat XPS Gathering: ', ret, npulses, nx
-            
+
         ret, buff = self.xps.GatheringDataMultipleLinesGet(self.sid, 0, npulses)
 
 
@@ -238,7 +261,7 @@ class QXAFS_XPS:
 
         dt = self.dwelltime / (self.npulses-1)
         ret = self.xps.GatheringReset(self.sid)
-        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.sid, 
+        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.sid,
                               self.group_name,  1, self.nsegments, dt)
 
         self.check_return('MultipleAxesPVTPulseOutputSet', ret)
@@ -246,7 +269,7 @@ class QXAFS_XPS:
         ret = self.xps.MultipleAxesPVTPulseOutputGet(self.sid, self.group_name)
         self.check_return('MultipleAxesPVTPulseOutputGet', ret)
 
-        ret = self.xps.MultipleAxesPVTVerification(self.sid, 
+        ret = self.xps.MultipleAxesPVTVerification(self.sid,
                                                    self.group_name, self.traj_name)
 
         self.check_return('MultipleAxesPVTVerification', ret)
@@ -257,14 +280,14 @@ class QXAFS_XPS:
 
         ret = self.xps.GatheringConfigurationGet(self.sid)
         self.check_return('GatheringConfigurationGet', ret)
-        
+
         triggers = ('Always', 'MONO.PVT.TrajectoryPulse',)
-        ret = self.xps.EventExtendedConfigurationTriggerSet(self.sid, triggers, 
+        ret = self.xps.EventExtendedConfigurationTriggerSet(self.sid, triggers,
                     ('0','0'), ('0','0'),('0','0'),('0','0'))
 
         self.check_return('EventExtConfTriggerSet', ret)
 
-        ret = self.xps.EventExtendedConfigurationActionSet(self.sid, 
+        ret = self.xps.EventExtendedConfigurationActionSet(self.sid,
                    ('GatheringOneData',), ('0',), ('0',),('0',),('0',))
 
         self.check_return('EventExtConfActionSet',  ret)
@@ -285,7 +308,7 @@ class QXAFS_XPS:
         epics.caput('ID13us:SSTime', self.dwelltime)
 
     def execute_trajectory(self):
-        return self.xps.MultipleAxesPVTExecution(self.sid, self.group_name, 
+        return self.xps.MultipleAxesPVTExecution(self.sid, self.group_name,
                                                  self.traj_name, 1)
 
     def clear_xps_events(self):
@@ -304,10 +327,10 @@ class QXAFS_XPS:
         print 'Run Trajectory'
         if self.use_undulator:
             id_offset = epics.caget('13IDE:En:id_off')
-            id1 = self.energy1/1000.0 + id_offset 
-            id2 = self.energy2/1000.0 + id_offset 
+            id1 = self.energy1/1000.0 + id_offset
+            id2 = self.energy2/1000.0 + id_offset
         self.mono.move(self.start_angle)
-        
+
         if self.use_undulator:
             epics.caput('13IDE:En:id_track', 0)
             epics.caput('ID13us:ScanEnergy', id1)
@@ -316,8 +339,8 @@ class QXAFS_XPS:
         struck_pv.add_callback(self.onStruckPulse)
 
         self.mono.move(self.start_angle, wait=True)
-        
-        
+
+
         if self.use_undulator:
             epics.caput('ID13us:SyncScanMode', 1)
         print 'Before Trajectory: '
@@ -348,14 +371,14 @@ class QXAFS_XPS:
         scan_thread.join()
         print 'Trajectory Thread Done!'
 
-        
+
         ret = self.xps.GatheringStop(self.sid)
 
         self.check_return('GatheringStop', ret)
         self.struck.stop()
         if self.use_undulator:
             epics.caput('ID13us:SyncScanMode', 0)
-        
+
 
 if __name__ == '__main__':
 
@@ -364,7 +387,7 @@ if __name__ == '__main__':
     if len(args) < 2:
         print msg
         sys.exit()
-        
+
     energy1, energy2 = float(args[0]), float(args[1])
     for key, val in opts:
         if key in ('-n', '--npulses'):
@@ -383,6 +406,6 @@ if __name__ == '__main__':
     q.run()
     q.read_gathering()
     q.save_gathering()
-    
+
     print 'Done: time = %.2f sec ' % (time.time()-start_time)
 
