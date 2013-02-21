@@ -174,7 +174,7 @@ class H5Writer(object):
         self.add_data(grp, 'address',  env_addr)
         self.add_data(grp, 'value',     env_val)
 
-    def begin_h5file(self, folder=''):
+    def begin_h5file(self):
         """open and start writing to h5file:
         important: only run this once!"""
         print 'This is begin h5'
@@ -208,7 +208,9 @@ class H5Writer(object):
         attrs = {'Dimension':dimension,
                  'Stop_Time':self.stop_time,
                  'Start_Time':self.start_time,
-                 'RawData_Folder': folder}
+                 'Map_Folder': self.folder,
+                 'Process_Machine': '',
+                 'Process_ID': 0}
         attrs.update(self.h5xrm_attrs)
 
         self.h5root = self.add_group(self.h5file,
@@ -218,6 +220,9 @@ class H5Writer(object):
         self.add_group(self.h5root, 'config')
         self.add_config(self.h5root, mapconf)
         self.xrf_dets = []
+
+    def close(self):
+        self.h5file.close()
 
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
