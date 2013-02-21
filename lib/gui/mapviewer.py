@@ -194,13 +194,14 @@ class MapViewerFrame(wx.Frame):
         cmd = fmt % (x, y, self.data.fname, xlabel, ylabel, repr(newplot))
         self.larch(cmd)
 
-    def ShowFile(self, evt=None, filename=None, ftype=None, **kws):
+    def ShowFile(self, evt=None, filename=None, **kws):
         if filename is None and evt is not None:
             filename = evt.GetString()
-
-        print 'Show File', filename, ftype, evt
-
-
+        mfile = self.filemap[filename]
+        print 'Show File', filename,  mfile
+        print mfile.check_hostid()
+        mfile.process(maxrow=14)
+		
     def createMenus(self):
         self.menubar = wx.MenuBar()
         # file
@@ -255,7 +256,7 @@ class MapViewerFrame(wx.Frame):
                 parent, fname = os.path.split(path)
                 self.filelist.Append(fname)
                 self.filemap[fname] = GSEXRM_MapFile(fname)
-                self.ShowFile(filename=path)
+                self.ShowFile(filename=fname)
 
 class ViewerApp(wx.App, wx.lib.mixins.inspection.InspectionMixin):
     def __init__(self, config=None, dbname=None, **kws):
