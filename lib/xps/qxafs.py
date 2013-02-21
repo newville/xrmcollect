@@ -112,27 +112,32 @@ class QXAFS_XPS:
         self.traj = traj
         self.backup_angle = xd_ramp
 
-
-    def create_sinewave_traj(self, period=1.0, npts=100, n=10, yrange=1):
+    def create_sinewave_traj(self, dtime=5.0, npts=100, n=5, yrange=1):
         """create sine wave trajectory:
         arguments
         ----------
-        period   time (sec) for 1 oscillation
+        dtime    time (sec) for total run
         n        number of periods
-        npts     number of pulses per period
+        npts     total number of pulses 
         yrange   amplitude of oscillation
         """
-        npulses = n*npts
-        i = arange(npulses)
+        self.dwelltime = dtime
+        i = np.arange(npts+1)
 
-        dt  = period / npts
-        amp = yrange /2
-        velo = amp * sin(i*2*yamp*dt)
+        amp  = yrange / 2.00
+        dt   = dtime * 1.0/ npts
+        print dtime, npts, n
+
+        velo = amp * np.sin(i*2*np.pi*n/npts)
         dist = dt * velo
 
         self.traj = []
-        for d, v in zip(dist, velo):
+        #o = open('sinex.dat', 'w')
+        #o.write('#\n#----------\n# t d v\n')
+        for d, v in zip(dist, velo):            
             self.traj.append("%.6f, %.6f, %.6f, 0, 0" % (dt, d, v))
+            #o.write("%.6f %.6f %.6f\n" % (dt, d, v))
+        #o.close()
         self.backup_angle=0
 
     def read_trajectory_file(self, fname):
