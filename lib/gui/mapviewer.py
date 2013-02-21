@@ -31,46 +31,19 @@ import wx.lib.mixins.inspection
 import h5py
 import numpy as np
 
-from .utils import (SimpleText, pack,
+from .utils import (SimpleText, pack, popup,
                     add_button, add_menu, add_choice, add_menu)
 
+from xrm_mapfile import GSEXRM_MapFile, isGSEXRM_MapFile
 
 CEN = wx.ALIGN_CENTER|wx.ALIGN_CENTER_VERTICAL
 LEFT = wx.ALIGN_LEFT|wx.ALIGN_CENTER_VERTICAL
 RIGHT = wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL
 ALL_CEN =  wx.ALL|CEN
 
-FILE_WILDCARDS = "Map Files(*.h5)|(*.h5)|All files (*.*)|*.*"
+# FILE_WILDCARDS = "X-ray Maps (*.h5)|*.h5|All files (*.*)|*.*"
 
-def randname(n=6):
-    "return random string of n (default 6) lowercase letters"
-    return ''.join([chr(randrange(26)+97) for i in range(n)])
-
-def isH5XRM(fname):
-    "return whether fname is a valid HDF5 Map file"
-    valid_h5xrm = False
-    try:
-        fh = h5py.File(fname)
-        xrfmap = fh['/xrf_map']
-        tmp = xrfmap.attrs['Version'], xrfmap.attrs['Beamline']
-        tmp = xrfmap['config'], xrfmap['scan']
-        tmp = xrfmap['det1/data'], xrfmap['det1/energy'], xrfmap['det1/roi_limits']
-        valid_h5xrm = True
-    except:
-        pass
-    finally:
-        fh.close()
-    return valid_h5xrm
-
-def isMapFolder(fname):
-    "return whether fname is a valid Scan Folder (raw data)"
-    if not os.isdir(fname):
-        return False
-    flist = os.listdir(fname)
-    for f in ('Master.dat', 'Environ.dat', 'Scan.ini', 'xmap.0001'):
-        if f not in flist:
-            return False
-    return True
+FILE_WILDCARDS = "X-ray Maps (*.h5)|*.h5"
 
 class MapViewerFrame(wx.Frame):
     _about = """XRF Map Viewer
@@ -138,13 +111,13 @@ class MapViewerFrame(wx.Frame):
         ir += 1
         sizer.Add(wx.StaticLine(panel, size=(675, 3), style=wx.LI_HORIZONTAL),
                   (ir, 1), (1, 10), wx.ALIGN_CENTER)
-        ir += 1
-        sizer.Add(SimpleText(panel, 'Should add fitting options'),
-                  (ir, 1), (1, 10), wx.ALIGN_CENTER)
+        #ir += 1
+        #sizer.Add(SimpleText(panel, 'Should add fitting options'),
+        #          (ir, 1), (1, 10), wx.ALIGN_CENTER)
 
-        ir += 1
-        sizer.Add(wx.StaticLine(panel, size=(675, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 1), (1, 10), wx.ALIGN_CENTER)
+        #ir += 1
+        #sizer.Add(wx.StaticLine(panel, size=(675, 3), style=wx.LI_HORIZONTAL),
+        #          (ir, 1), (1, 10), wx.ALIGN_CENTER)
 
         pack(panel, sizer)
         return panel
@@ -221,11 +194,11 @@ class MapViewerFrame(wx.Frame):
         cmd = fmt % (x, y, self.data.fname, xlabel, ylabel, repr(newplot))
         self.larch(cmd)
 
-    def ShowFile(self, evt=None, filename=None, **kws):
+    def ShowFile(self, evt=None, filename=None, ftype=None, **kws):
         if filename is None and evt is not None:
             filename = evt.GetString()
 
-        print 'Show File', filename,evt
+        print 'Show File', filename, ftype, evt
 
 
     def createMenus(self):
@@ -266,26 +239,23 @@ class MapViewerFrame(wx.Frame):
                             defaultDir=os.getcwd(),
                             wildcard=FILE_WILDCARDS,
                             style=wx.OPEN)
+        path, read = None, False
         if dlg.ShowModal() == wx.ID_OK:
-            path = dlg.GetPath()
-            path = path.replace('\\', '/')
+            read = True
+            path = dlg.GetPath().replace('\\', '/')
             if path in self.filemap:
-                re_read = popup(self, "Re-read file '%s'?" % path, 'Re-read file?')
-            valid = True
-            if isH5XRM(path):
-                parent, fname = os.path.split(path)
-                self.filelist.Append(fname)
-                self.filemap[fname] = 'hdf5'
-            elif isMapFolder(path):
-                parent, fname = os.path.split(path)
-                self.filelist.Append(fname)
-                self.filemap[fname] = 'raw'
-            else:
-                print 'should popup invalid file message'
-                valid = False
-            if valid:
-                self.ShowFile(filename=fname)
+                read = popup(self, "Re-read file '%s'?" % path, 'Re-read file?')
         dlg.Destroy()
+
+        if read:
+            if not isGSEXRM_MapFile(path):
+                popup(self, "'%s' doesn't seem to be a Map File" % path,
+                      "Not a Map file?")
+            else:
+                parent, fname = os.path.split(path)
+                self.filelist.Append(fname)
+                self.filemap[fname] = GSEXRM_MapFile(fname)
+                self.ShowFile(filename=path)
 
 class ViewerApp(wx.App, wx.lib.mixins.inspection.InspectionMixin):
     def __init__(self, config=None, dbname=None, **kws):
