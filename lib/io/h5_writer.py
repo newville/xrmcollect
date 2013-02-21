@@ -54,7 +54,7 @@ class H5Writer(object):
     def __init__(self, folder=None, **kw):
         self.folder = folder
         self.master_header = None
-
+        self.filename = None
         self.h5file = None
         self.h5root = None
         self.pos_addr = None
@@ -74,9 +74,9 @@ class H5Writer(object):
         "reads master file for toplevel scan info"
         self.rowdata = None
         self.master_header = None
-
         if self.folder is None:
             return
+        print 'ReadMaster!'
         fname = path.join(nativepath(self.folder), self.MasterFile)
         self.stop_time = time.ctime(os.stat(fname).st_mtime)
         if path.exists(fname):
@@ -95,8 +95,28 @@ class H5Writer(object):
         cfile.Read(path.join(self.folder, self.ScanFile))
         self.mapconf = cfile.config
 
-        self.filename = self.mapconf['scan']['filename']
+        self.filename = filename = self.mapconf['scan']['filename']
 
+        mapconf = self.mapconf
+        slow_pos = mapconf['slow_positioners']
+        fast_pos = mapconf['fast_positioners']
+
+        scanconf = mapconf['scan']
+        self.dimension = scanconf['dimension']
+   
+        pos1 = scanconf['pos1']
+        self.pos_addr = [pos1]
+        self.pos_desc = [slow_pos[pos1]]
+        self.ixaddr = -1
+        for i, posname in enumerate(fast_pos):
+            if posname == pos1:
+                self.ixaddr = i
+        if self.dimension > 1:
+            yaddr = scanconf['pos2']
+            self.pos_addr.append(yaddr)
+            self.pos_desc.append(slow_pos[yaddr])
+        print 'ReadMaster Done'
+            
     def add_group(self, group, name, dat=None, attrs=None):
         """ add an hdf5 group"""
         g = group.create_group(name)
@@ -123,7 +143,7 @@ class H5Writer(object):
 
     def add_config(self, root, config):
         "add ROI, DXP Settings, and Config data"
-        group = self.h5root['config']
+        group = root['config']
 
         scantext = open(path.join(self.folder, self.ScanFile), 'r').read()
         group.create_dataset('scanfile', data=scantext)
@@ -177,61 +197,57 @@ class H5Writer(object):
     def begin_h5file(self):
         """open and start writing to h5file:
         important: only run this once!"""
-        print 'This is begin h5'
-        if self.h5file is not None or self.folder is None:
+        print 'This is begin h5 ', self.h5file, self.folder
+        if self.h5file is None or self.folder is None:
             return
-
-        mapconf = self.mapconf
-        slow_pos = mapconf['slow_positioners']
-        fast_pos = mapconf['fast_positioners']
-
-        scanconf = mapconf['scan']
-        dimension = scanconf['dimension']
-        filename = scanconf['filename']
-
-        pos1 = scanconf['pos1']
-        self.pos_addr = [pos1]
-        self.pos_desc = [slow_pos[pos1]]
-        self.ixaddr = -1
-        for i, posname in enumerate(fast_pos):
-            if posname == pos1:
-                self.ixaddr = i
-        if dimension > 1:
-            yaddr = scanconf['pos2']
-            self.pos_addr.append(yaddr)
-            self.pos_desc.append(slow_pos[yaddr])
-
-        self.dimension = dimension
-        #
-        self.h5file = h5py.File(filename+'.h5', 'w')
-
-        attrs = {'Dimension':dimension,
+   
+        attrs = {'Dimension':self.dimension,
                  'Stop_Time':self.stop_time,
                  'Start_Time':self.start_time,
                  'Map_Folder': self.folder,
                  'Process_Machine': '',
                  'Process_ID': 0}
         attrs.update(self.h5xrm_attrs)
+        print '==begin: h5file =  ', self.h5file
+        
+        # root = self.add_group(self.h5file, 'xrf_map', attrs=attrs)
+        root = self.h5file.create_group('xrf_map')
+        for key, val in attrs.items():
+            root.attrs[key] = val
+        print '==begin: root = ', root
+        self.add_group(root, 'scan')
+        self.add_group(root, 'config')
+        self.add_config(root, self.mapconf)          
 
-        self.h5root = self.add_group(self.h5file,
-                                     'xrf_map', attrs=attrs)
-
-        self.add_group(self.h5root, 'scan')
-        self.add_group(self.h5root, 'config')
-        self.add_config(self.h5root, mapconf)
-        self.xrf_dets = []
-
+        
+    def open(self):
+        if self.filename is None:
+            self.read_master()
+        print 'Open: Self.filename ', self.filename
+        
+        self.h5file = h5py.File("%s.h5" % self.filename, mode='w')
+        print 'H5File = ', self.h5file
+        
+        if '/xrf_map' not in self.h5file:
+            self.begin_h5file()
+        
+        self.h5root = self.h5file['/xrf_map']
+        self.xrf_dets = [] 
+        
     def close(self):
         self.h5file.close()
 
     def process(self, maxrow=None):
         print '=== HDF5 Writer: ', self.folder
         self.read_master()
+        if self.h5file is None:
+            print 'Process: Need to Open File: .....'
+            self.open()
+            print 'Process: File Opened'
+        print 'PROCESS XXX '
         if len(self.rowdata) < 1:
             print ' === scan directory empty!'
             return
-        if self.last_row == 0 and len(self.rowdata)>0:
-            self.begin_h5file()
 
         if maxrow is None:
             maxrow = len(self.rowdata)

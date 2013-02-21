@@ -53,23 +53,25 @@ class GSEXRM_MapFile:
     """
     def __init__(self, filename):
         self.filename = filename
+        self.h5writer = None
         self.valid = self.open(filename)
         if self.valid:
             self.owner = self.check_hostid()
 
 
     def open(self, filename):
-        try:
+        if True: # try:
             self.h5file_modtime = os.stat(filename).st_mtime
             self.root = h5py.File(filename, 'a')
             self.parent, self.filename = os.path.split(filename)
-            self.xrfmap = self.root['/xrf_map']
-            self.folder = attrs['Map_Folder']
+            xrfmap = self.xrfmap = self.root['/xrf_map']
+           
+            self.folder = xrfmap.attrs['Map_Folder']
             tmp = xrfmap.attrs['Version'], xrfmap.attrs['Beamline']
             tmp = xrfmap['config'], xrfmap['scan']
             tmp = xrfmap['det1/data'], xrfmap['det1/energy'], xrfmap['det1/roi_limits']
             return True
-        except:
+        else: # except:
             return False
 
     def close(self):
@@ -80,14 +82,15 @@ class GSEXRM_MapFile:
 
     def check_hostid(self):
         """checks host and id of file: returns True if this process the owner?"""
-        file_mach = self.xrfmap.attrs['Process_Machine']
-        file_pid  = self.xrfmap.attrs['Process_ID']
+        attrs = self.xrfmap.attrs
+        file_mach = attrs['Process_Machine']
+        file_pid  = attrs['Process_ID']
         thisname  = socket.gethostname()
         thispid   = os.getpid()
         if len(file_mach) == 0 or file_pid < 1:
             attrs['Process_Machine'], attrs['Process_ID'] = thisname, thispid
 
-        self.folder = self.xrfmap.attrs['Map_Folder']
+        self.folder = attrs['Map_Folder']
         return (file_mach == thisname and file_pid == thispid)
 
     def folder_has_newdata(self):
@@ -98,13 +101,15 @@ class GSEXRM_MapFile:
                 self.folder_modtime = os.stat(self.masterfile).st_mtime
         return (self.h5file_modtime < self.folder_modtime)
 
-    def process(self):
+    def process(self, maxrow=None, force=False):
         "look for more data from raw folder, process if needed"
-        if self.check_hostid() and self.folder_has_newdata():
+        if self.check_hostid() and (self.folder_has_newdata() or force):
             self.close()
-            h5w = H5Writer(folder=self.folder)
-            h5w.process()
-            h5w.close()
-            self.open()
+            if self.h5writer is None:
+                self.h5writer = H5Writer(folder=self.folder)
+            self.h5writer.open()
+            self.h5writer.process(maxrow=maxrow)
+            self.h5writer.close()
+            self.open(self.filename)
             self.check_hostid()
 
