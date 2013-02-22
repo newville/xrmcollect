@@ -101,10 +101,16 @@ class GSEXRM_MapFile:
         self.dimension = None
         self.xrfmap   = None
         self.h5root   = None
+        self.__initialize_from_filefolder()
+
+    def __initialize_from_filefolder(self):
+        """initialize from filename or folder"""
 
         if self.filename is not None:
             self.status   = getFileStatus(self.filename)
-            
+
+        print '__INIT__  ', self.filename, self.folder, self.status
+
         # for existing file, read initial settings
         if self.status in (GSEXRM_FileStatus.initialized,
                            GSEXRM_FileStatus.created):
@@ -128,14 +134,14 @@ class GSEXRM_MapFile:
 
             if not self.filename.endswith('.h5'):
                 self.filename = "%s.h5" % self.filename
+            if not os.path.exists(self.filename):
+                self.h5root = h5py.File(self.filename, 'w')
+            # re-call this routine now that an empty file exists
+            return self.__initialize_from_filefolder()
                 
-            tmp = h5py.File(self.filename, 'w')
-            self.status = GSEXRM_FileStatus.no_xrfmap
-            tmp.close()
-
         # initialize xrf_map group to HDF5 if needed
         if (self.status ==  GSEXRM_FileStatus.no_xrfmap and
-            folder is not None):
+            self.folder is not None):
             if not isGSEXRM_MapFolder(self.folder):
                 raise GSEXRM_Exception(
                     "'%s' is not a valid GSEXRM Map folder" % self.folder)
@@ -200,7 +206,7 @@ class GSEXRM_MapFile:
             self.read_master()
 
         if self.h5root is None:
-            self.h5root = h5py.File(self.filename, 'a')
+            self.h5root = h5py.File(self.filename, 'w')
    
         attrs = {'Dimension':self.dimension,
                  'Stop_Time':self.stop_time,
