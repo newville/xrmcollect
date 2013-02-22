@@ -7,3 +7,4 @@ doc/*.pdf
 build
 dist
 junk
+MapDir/
