@@ -91,7 +91,8 @@ def read_xmap_netcdf(fname, verbose=False):
     modpixs    = array_data[0,0,8]
     if modpixs < 124: modpixs = 124
     npix_total = 0
-    clocktick  = 320.e-9
+    # real / live times are returned in microseconds.
+    clocktick  = 0.320   # xmap clocktick = 320 ns
     for array in range(narrays):
         for module in range(nmodules):
             d   = array_data[array,module,:]
