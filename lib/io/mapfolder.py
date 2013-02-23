@@ -7,7 +7,9 @@ from ConfigParser import  ConfigParser
 
 def readASCII(fname, nskip=0, isnumeric=True):
     dat, header = [], []
-    for line in open(fname,'r').readlines():
+    with open(fname,'r') as fh:
+        lines = fh.readlines()
+    for line in lines:
         if line.startswith('#') or line.startswith(';'):
             header.append(line[:-1])
             continue
