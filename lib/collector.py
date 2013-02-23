@@ -37,7 +37,7 @@ def fix_range(start=0,stop=1,step=0.1, addstep=False):
     span = abs(stop-start)
     if abs(span) < 1.e-12:
         return (1, start, stop, 0)
-    npts = 1 + int(0.25 + abs(span/step))
+    npts = 1 + int(abs(step*1.01 + span)/step)
     stop = start + step * (npts-1)
     return (npts,start,stop,step)
 
