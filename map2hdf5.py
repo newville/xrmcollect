@@ -1,5 +1,10 @@
-from lib.io.h5_writer import H5Writer 
+from lib.io.xrm_mapfile import GSEXRM_MapFile
+g = GSEXRM_MapFile(folder='MapDir')
+g.process() # maxrow=100)
+g.close()
 
-w = H5Writer('MapDir')
-w.process(maxrow=0)
+
+# h = GSEXRM_MapFile(folder='MapDir')
+# h.process(maxrow=25)
+
 
