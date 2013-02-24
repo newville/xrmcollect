@@ -31,19 +31,38 @@ import wx.lib.mixins.inspection
 import h5py
 import numpy as np
 
-from .utils import (SimpleText, pack, popup,
+from .utils import (SimpleText, EditableListBox, pack, popup,
                     add_button, add_menu, add_choice, add_menu)
 
-from xrm_mapfile import GSEXRM_MapFile, isGSEXRM_MapFile
+from ..io.xrm_mapfile import (GSEXRM_MapFile,
+                              GSEXRM_Exception, GSEXRM_NotOwner)
 
 CEN = wx.ALIGN_CENTER|wx.ALIGN_CENTER_VERTICAL
 LEFT = wx.ALIGN_LEFT|wx.ALIGN_CENTER_VERTICAL
 RIGHT = wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL
 ALL_CEN =  wx.ALL|CEN
 
-# FILE_WILDCARDS = "X-ray Maps (*.h5)|*.h5|All files (*.*)|*.*"
+# FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0*|All files (*.*)|*.*"
 
-FILE_WILDCARDS = "X-ray Maps (*.h5)|*.h5"
+# FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0&"
+
+NOT_OWNER_MSG = """The File
+   '%s'
+appears to be open by another process.  Having two
+processes writing to the file can cause corruption.
+
+Do you want to take ownership of the file?
+"""
+
+NOT_GSEXRM_FILE = """The File
+   '%s'
+doesn't seem to be a Map File
+"""
+FILE_ALREADY_READ = """The File
+   '%s'
+has already been read.
+"""
+
 
 class MapViewerFrame(wx.Frame):
     _about = """XRF Map Viewer
@@ -81,12 +100,8 @@ class MapViewerFrame(wx.Frame):
         splitter  = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE)
         splitter.SetMinimumPaneSize(175)
 
-        self.filelist  = wx.ListBox(splitter)
-        self.filelist.SetBackgroundColour(wx.Colour(255, 255, 255))
-        self.filelist.Bind(wx.EVT_LISTBOX, self.ShowFile)
-
+        self.filelist = EditableListBox(splitter, self.ShowFile)
         self.detailspanel = self.createDetailsPanel(splitter)
-
         splitter.SplitVertically(self.filelist, self.detailspanel, 1)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(splitter, 1, wx.GROW|wx.ALL, 5)
@@ -197,14 +212,13 @@ class MapViewerFrame(wx.Frame):
     def ShowFile(self, evt=None, filename=None, **kws):
         if filename is None and evt is not None:
             filename = evt.GetString()
-        mfile = self.filemap[filename]
-        print 'Show File', filename,  mfile
-        print mfile.check_hostid()
-        mfile.process(maxrow=14)
-		
+        print 'Show File', filename,
+        if self.check_ownership(filename):
+            self.filemap[filename].process()
+        self.current_file = self.filemap[filename]
+
     def createMenus(self):
         self.menubar = wx.MenuBar()
-        # file
         fmenu = wx.Menu()
         add_menu(self, fmenu, "&Open Map\tCtrl+O",
                  "Read Map File or Folder",  self.onRead)
@@ -232,13 +246,12 @@ class MapViewerFrame(wx.Frame):
         for nam in dir(self.larch.symtable._sys.wx):
             obj = getattr(self.larch.symtable._sys.wx, nam)
             del obj
-
         self.Destroy()
 
     def onRead(self, evt=None):
         dlg = wx.FileDialog(self, message="Read Map",
                             defaultDir=os.getcwd(),
-                            wildcard=FILE_WILDCARDS,
+                            # wildcard=FILE_WILDCARDS,
                             style=wx.OPEN)
         path, read = None, False
         if dlg.ShowModal() == wx.ID_OK:
@@ -249,14 +262,31 @@ class MapViewerFrame(wx.Frame):
         dlg.Destroy()
 
         if read:
-            if not isGSEXRM_MapFile(path):
-                popup(self, "'%s' doesn't seem to be a Map File" % path,
-                      "Not a Map file?")
-            else:
+            try:
                 parent, fname = os.path.split(path)
+                xrmfile = GSEXRM_MapFile(fname)
+            except:
+                popup(self, NOT_GSEXRM_FILE % fnamex,
+                      "Not a Map file!")
+                return
+            if fname not in self.filemap:
+                self.filemap[fname] = xrmfile
+            if fname not in self.filelist.GetItems():
                 self.filelist.Append(fname)
-                self.filemap[fname] = GSEXRM_MapFile(fname)
-                self.ShowFile(filename=fname)
+
+            if self.check_ownership(fname):
+                self.filemap[fname].process()
+
+    def check_ownership(self, fname):
+        """
+        check whether we're currently owner of the file.
+        this is important!! HDF5 files can be corrupted.
+        """
+        if not self.filemap[fname].check_hostid():
+            if popup(self, NOT_OWNER_MSG % fname,
+                     'Not Owner of HDF5 File'):
+                self.filemap[fname].claim_hostid()
+        return self.filemap[fname].check_hostid()
 
 class ViewerApp(wx.App, wx.lib.mixins.inspection.InspectionMixin):
     def __init__(self, config=None, dbname=None, **kws):
