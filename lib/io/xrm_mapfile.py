@@ -14,10 +14,13 @@ from .mapfolder import (readASCII, readMasterFile,
 
 from .file_utils import nativepath
 
+NINIT = 16
+COMP = 4 # compression level
+
 class GSEXRM_FileStatus:
-    no_xrfmap    = 'hdf5 does not have /xrfmap'     # HDF5 created, no xrfmap group
-    created      = 'hdf5 has empty schema'  # HDF5 started, xrfmap exists, no data
-    hasdata      = 'hdf5 has map data' # 1+ row written: array sizes known
+    no_xrfmap    = 'hdf5 does not have /xrfmap'
+    created      = 'hdf5 has empty schema'  # xrfmap exists, no data
+    hasdata      = 'hdf5 has map data'      # array sizes known
     err_notfound = 'file not found'
     err_nothdf5  = 'file is not hdf5'
 
@@ -245,7 +248,6 @@ class GSEXRM_MapFile:
                     "'%s' is not a valid GSEXRM Map folder" % self.folder)
             self.status   = getFileStatus(self.filename)
 
-
         # for existing file, read initial settings
         if self.status in (GSEXRM_FileStatus.hasdata,
                            GSEXRM_FileStatus.created):
@@ -274,7 +276,6 @@ class GSEXRM_MapFile:
 
     def open(self, filename, check_status=True):
         """open GSEXRM HDF5 File :
-
         with check_status=False, this **must** be called
         for an existing, valid GSEXRM HDF5 File!!
         """
@@ -285,15 +286,14 @@ class GSEXRM_MapFile:
                 raise GSEXRM_Exception(
                     "'%s' is not a valid GSEXRM HDF5 file" % self.filename)
         self.filename = filename
-
         if self.h5root is None:
             self.h5root = h5py.File(self.filename)
         self.xrfmap = self.h5root['/xrfmap']
         if self.folder is None:
             self.folder = self.xrfmap.attrs['Map_Folder']
-        self.is_owner = self.check_hostid()
-        self.h5_modtime = os.stat(self.filename).st_mtime
         self.last_row = self.xrfmap.attrs['Last_Row']
+        if self.dimension is None:
+            self.read_master()
 
     def close(self):
         self.xrfmap.attrs['Process_Machine'] = ''
@@ -316,6 +316,9 @@ class GSEXRM_MapFile:
         """add configuration from Map Folder to HDF5 file
         ROI, DXP Settings, and Config data
         """
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
         group = self.xrfmap['config']
         scantext = open(os.path.join(self.folder, self.ScanFile), 'r').read()
         for name, sect in (('scan', 'scan'),
@@ -394,6 +397,9 @@ class GSEXRM_MapFile:
         if self.status == GSEXRM_FileStatus.created:
             self.initialize_xrfmap()
 
+        if self.dimension is None:
+            self.read_master()
+
         nrows = len(self.rowdata)
         if maxrow is not None:
             nrows = min(nrows, maxrow)
@@ -432,6 +438,9 @@ class GSEXRM_MapFile:
 
     def add_rowdata(self, row):
         """adds a row worth of real data"""
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
         thisrow = self.last_row + 1
         xnpts, nmca, nchan = row.spectra.shape
         mcas = []
@@ -514,8 +523,8 @@ class GSEXRM_MapFile:
 
     def build_schema(self, row):
         """build schema for detector and scan data"""
-        NINIT = 16
-        COMP = 4 # compression level
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
 
         if self.npts is None:
             self.npts = row.npts
@@ -623,6 +632,8 @@ class GSEXRM_MapFile:
 
     def resize_arrays(self, nrow):
         "resize all arrays for new nrow size"
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
         realmca_groups = []
         virtmca_groups = []
         for g in self.xrfmap.values():
@@ -646,13 +657,19 @@ class GSEXRM_MapFile:
             old, npts, nx = g.shape
             g.resize((nrow, npts, nx))
 
+    def claim_hostid(self):
+        if self.xrfmap is None:
+            return
+        self.xrfmap.attrs['Process_Machine'] = socket.gethostname()
+        self.xrfmap.attrs['Process_ID'] = os.getpid()
+        self.h5root.flush()
+
     def check_hostid(self):
         """checks host and id of file:
         returns True if this process the owner?
         """
         if self.xrfmap is None:
             return
-
         attrs = self.xrfmap.attrs
         file_mach = attrs['Process_Machine']
         file_pid  = attrs['Process_ID']
