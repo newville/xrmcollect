@@ -203,9 +203,9 @@ class GSEXRM_MapRow:
         # pform = "=Write Scan Data row=%i, npts=%i, folder=%s"
         # print pform % (irow, npts, self.folder)
 
-class GSEXRM_MapFile:
+class GSEXRM_MapFile(object):
     """
-    GSECARS X-ray Microprobe Map File:
+    Access to GSECARS X-ray Microprobe Map File:
 
     The GSEXRM Map file is an HDF5 file built from a folder containing
     'raw' data from a set of sources
@@ -218,7 +218,24 @@ class GSEXRM_MapFile:
             data is available, as for on-line collection
          b) stores locking information (Machine Name/Process ID) in the top-level
 
+    For extracting data from a GSEXRM Map File, use:
+
+    >>> from epicscollect.io import GSEXRM_MapFile
+    >>> map = GSEXRM_MapFile('MyMap.001')
+    >>> fe  = map.get_roimap('Fe')
+    >>> as  = map.get_roimap('As Ka', det=1, dtcorrect=True)
+    >>> rgb = map.get_rgbmap('Fe', 'Ca', 'Zn', det=None, dtcorrect=True, scale_each=False)
+    >>> en  = map.get_energy(det=1)
+    >>> xrf = map.get_spectra(xmin=10, xmax=20, ymin=40, ymax=50, dtcorrect=True)
+
+    All these take the following options:
+
+       det:         which detector element to use (1, 2, 3, 4, None), [None]
+                    None means to use the sum of all detectors
+       dtcorrect:   whether to return dead-time corrected spectra     [True]
+
     """
+
     ScanFile   = 'Scan.ini'
     EnvFile    = 'Environ.dat'
     ROIFile    = 'ROI.dat'
@@ -737,4 +754,114 @@ class GSEXRM_MapFile:
             self.pos_addr.append(yaddr)
             self.pos_desc.append(slow_pos[yaddr])
 
+
+    def get_energy(self, det=None):
+        """return energy array for a detector"""
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
+        dgroup= 'detsum'
+        if det in (1, 2, 3, 4):
+            dgroup = 'det%i' % det
+
+        return self.xrfmap["%s/energy" % dgroup].value
+
+    def get_spectra(self, det=None, dtcorrect=True,
+                    xmin=None, xmax=None, ymin=None, ymax=None):
+        """return XRF spectra, summed over a given rectangle.
+        xmin/xmax/ymin/ymax given in pixel units of the map
+        """
+        xslice = slice(xmin, xmax)
+        yslice = slice(ymin, ymax)
+        dgroup= 'detsum'
+        if det in (1, 2, 3, 4):
+            dgroup = 'det%i' % det
+
+        spectra = self.xrfmap["%s/data" % dgroup]
+        return spectra[xslice, yslice, :].sum(axis=0).sum(axis=0)
+
+
+    def get_spectra_by_points(self, points, det=None, dtcorrect=True):
+        """return XRF spectra, summed over a set of ix, iy points
+        """
+        pass
+
+    def get_map_erange(self, det=None, dtcorrect=True,
+                       emin=None, emax=None, by_energy=True):
+        """extract map for an ROI set here, by energy range:
+
+        if by_energy is True, emin/emax are taken to be in keV (Energy units)
+        otherwise, they are taken to be integer energy channel numbers
+        """
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
+    def get_roimap(self, name, det=None, dtcorrect=True):
+        """extract roi map for a pre-defined roi by name
+        """
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
+        imap = -1
+        if det in (1, 2, 3, 4):
+            mcaname = '(mca%i)' % det
+            names = list(self.xrfmap['roimap/det_name'])
+            dat = 'roimap/det_raw'
+            if dtcorrect:
+                dat = 'roimap/det_cor'
+        else:
+            mcaname = ''
+            names = list(self.xrfmap['roimap/sum_name'])
+            dat = 'roimap/sum_raw'
+            if dtcorrect:
+                dat = 'roimap/sum_cor'
+
+        for i, roiname in enumerate(names):
+            if roiname.startswith(name) and roiname.endswith(mcaname):
+                imap = i
+                break
+        if imap == -1:
+            raise GSEXRM_Exception("Could not find ROI '%s'" % name)
+
+        return self.xrfmap[dat][:, :, imap]
+
+    def get_rgbmap(self, rroi, groi, broi, det=None,
+                   dtcorrect=True, scale_each=True, scales=None):
+        """return a (NxMx3) array for Red, Green, Blue from named
+        ROIs (using get_roimap).
+
+        Arguments
+        -----------
+
+        scale_each  scale each map separately to span the full color range. [True]
+        scales      if not None and a 3 element tuple, used
+                    as the multiplicative scale for each map.               [None]
+
+        By default (scales_each=True, scales=None), each map is scaled by
+        1.0/map.max() -- that is 1 of the max value for that map.
+
+        If scales_each=False, each map is scaled by the same value
+        (1/max intensity of all maps)
+
+        """
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+
+        rmap = self.get_roimap(rroi, det=det, dtcorrect=dtcorrect)
+        gmap = self.get_roimap(groi, det=det, dtcorrect=dtcorrect)
+        bmap = self.get_roimap(broi, det=det, dtcorrect=dtcorrect)
+
+        if scales is None or len(scales) != 3:
+            scales = (1./rmap.max(), 1./gmap.max(), 1./bmap.max())
+        if scale_each:
+            rmap *= scales[0]
+            gmap *= scales[1]
+            bmap *= scales[2]
+        else:
+            scale = min(scales[0], scales[1], scales[2])
+            rmap *= scale
+            bmap *= scale
+            gmap *= scale
+
+        return np.array([rmap, gmap, bmap]).swapaxes(0, 2).swapaxes(0, 1)
 
