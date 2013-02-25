@@ -99,28 +99,24 @@ class SimpleMapPanel(wx.Panel):
         self.show = add_button(self, 'Show Map', size=(90, -1), action=self.onShowMap)
 
         ir = 0
-        sizer.Add(SimpleText(self, 'Simple ROI Map', colour=(190, 10, 10)),
-                  (ir, 1), (1, 3), ALL_CEN, 2)
-
-        ir +=1
         sizer.Add(SimpleText(self, 'Map 1'),             (ir, 1), (1, 1), ALL_CEN, 2)
         sizer.Add(SimpleText(self, 'Operator'),          (ir, 2), (1, 1), ALL_CEN, 2)
         sizer.Add(SimpleText(self, 'Map 2'),             (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Detector'),          (ir, 4), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Detector'),          (ir, 0), (1, 1), ALL_CEN, 2)
 
         ir += 1
         sizer.Add(self.roi1,          (ir, 1), (1, 1), ALL_CEN, 2)
         sizer.Add(self.op,            (ir, 2), (1, 1), ALL_CEN, 2)
         sizer.Add(self.roi2,          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.det,           (ir, 4), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.det,           (ir, 0), (1, 1), ALL_CEN, 2)
 
         ir += 1
-        sizer.Add(self.cor,   (ir,   1), (1, 3), ALL_LEFT, 2)
-        sizer.Add(self.newid, (ir+1, 1), (1, 3), ALL_LEFT, 2)
-        sizer.Add(self.show,  (ir+2, 1), (1, 1), ALL_LEFT, 2)
+        sizer.Add(self.cor,   (ir, 0), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.newid, (ir, 2), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.show,  (ir+1, 0), (1, 1), ALL_LEFT, 2)
 
         sizer.Add(wx.StaticLine(self, size=(500, 3), style=wx.LI_HORIZONTAL),
-                  (ir+3, 1), (1, 5), ALL_CEN)
+                  (ir+2, 0), (1, 5), ALL_CEN)
 
         pack(self, sizer)
 
@@ -161,19 +157,15 @@ class TriColorMapPanel(wx.Panel):
 
         self.SetMinSize((425, 275))
 
-        ir = 0
-        sizer.Add(SimpleText(self, 'Three Color ROI Map', colour=(190, 10, 10)),
-                  (ir, 0), (1, 3), ALL_CEN, 2)
-
         self.rchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='r'))
         self.gchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='g'))
         self.bchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='b'))
         self.show = add_button(self, 'Show Map', size=(90, -1), action=self.onShow3ColorMap)
 
         self.det  = add_choice(self, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
-        self.newid  = wx.CheckBox(self, -1)
+        self.newid  = wx.CheckBox(self, -1, 'Correct Deadtime?')
+        self.cor  = wx.CheckBox(self, -1, 'Reuse Previous Display?')
         self.newid.SetValue(1)
-        self.cor  = wx.CheckBox(self, -1)
         self.cor.SetValue(1)
 
         self.rauto = wx.CheckBox(self, -1, 'Autoscale?')
@@ -190,48 +182,36 @@ class TriColorMapPanel(wx.Panel):
         self.gscale = FloatCtrl(self, precision=0, value=1, minval=0)
         self.bscale = FloatCtrl(self, precision=0, value=1, minval=0)
 
-        ir += 1
-        sizer.Add(SimpleText(self, 'Red'),   (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Green'), (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Blue'),  (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Detector'),          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Correct Deadtime?'), (ir, 4), (1, 1), ALL_CEN, 2)
+        ir = 0
+        sizer.Add(SimpleText(self, 'Red'),       (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Green'),     (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Blue'),      (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Detector'),  (ir, 0), (1, 1), ALL_CEN, 2)
 
         ir += 1
-        sizer.Add(self.rchoice,              (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.gchoice,              (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.bchoice,              (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.det,                  (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.cor,                  (ir, 4), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.rchoice,              (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.gchoice,              (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.bchoice,              (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.det,                  (ir, 0), (1, 1), ALL_CEN, 2)
 
         ir += 1
-        sizer.Add(self.rauto,            (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.gauto,            (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.bauto,            (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.rauto,            (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.gauto,            (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.bauto,            (ir, 3), (1, 1), ALL_CEN, 2)
         ir += 1
-        sizer.Add(self.rscale,            (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.gscale,            (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.bscale,            (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, '<- Intensity Value for Full Scale'),     (ir, 3), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.rscale,            (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.gscale,            (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.bscale,            (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Max Intensity:'),     (ir, 0), (1, 1), ALL_LEFT, 2)
 
 
         ir += 1
-        #sizer.Add(self.cor,   (ir,   1), (1, 3), ALL_LEFT, 2)
-        #sizer.Add(self.newid, (ir+1, 1), (1, 3), ALL_LEFT, 2)
-        #sizer.Add(self.show,  (ir+2, 1), (1, 1), ALL_LEFT, 2)
-        #sizer.Add(wx.StaticLine(self, size=(500, 3), style=wx.LI_HORIZONTAL),
-        #          (ir+3, 1), (1, 5), ALL_CEN)
+        sizer.Add(self.cor,   (ir, 0), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.newid, (ir, 2), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.show,  (ir+1, 0), (1, 1), ALL_LEFT, 2)
 
-
-
-        sizer.Add(self.show, (ir, 0), (1, 1), ALL_LEFT, 2)
-
-        sizer.Add(SimpleText(self, 'Reuse Previous Display'), (ir, 1), (1, 3), ALL_RIGHT, 2)
-        sizer.Add(self.newid, (ir, 4), (1, 1), ALL_CEN, 2)
-
-        ir += 1
-        sizer.Add(wx.StaticLine(self, size=(575, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
+        sizer.Add(wx.StaticLine(self, size=(500, 3), style=wx.LI_HORIZONTAL),
+                  (ir+2, 0), (1, 5), ALL_CEN)
 
         pack(self, sizer)
 
@@ -290,7 +270,7 @@ class TriColorMapPanel(wx.Panel):
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
             self.owner.im_displays.append(ImageFrame(config_on_frame=False))
 
-        title = '%s: R, G, B = %s, %s, %s' % (datafile.filename, r, g, b)
+        title = '%s: (R, G, B) = (%s, %s, %s)' % (datafile.filename, r, g, b)
         self.owner.display_map(map, title=title, with_config=False)
 
     def onAutoScale(self, event=None, color=None, **kws):
@@ -365,7 +345,7 @@ class MapViewerFrame(wx.Frame):
         for name, key, creator in (('Simple ROI Map',  'roimap', SimpleMapPanel),
                                    ('3-Color ROI Map', '3color',  TriColorMapPanel)):
             #  ('2x2 Grid',         self.MapGridPanel)):
-            print 'panel ' , name, parent, creator
+            # print 'panel ' , name, parent, creator
             p = creator(parent, owner=self)
             self.nb.AddPage(p, name, True)
             self.nbpanels[key] = p
@@ -373,220 +353,6 @@ class MapViewerFrame(wx.Frame):
         self.nb.SetSelection(0)
         sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
         pack(parent, sizer)
-
-    def createViewOptsPanel(self, parent):
-        """ panel for selecting ROIS, plot types"""
-        panel = wx.Panel(parent)
-        panel.SetMinSize((625, 375))
-        sizer = wx.GridBagSizer(8, 8)
-        self.title = SimpleText(panel, 'initializing...')
-        ir = 0
-        sizer.Add(self.title, (ir, 0), (1, 5), ALL_CEN, 2)
-        ir += 1
-        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
-
-        # Map ROI
-        ir += 1
-        sizer.Add(SimpleText(panel, 'Simple ROI Map', colour=(190, 10, 10)),
-                  (ir, 0), (1, 3), ALL_CEN, 2)
-
-        self.map1_roi1 = add_choice(panel, choices=[], size=(120, -1))
-        self.map1_roi2 = add_choice(panel, choices=[], size=(120, -1))
-        self.map1_op   = add_choice(panel, choices=['/', '*', '-', '+'], size=(80, -1))
-        self.map1_det  = add_choice(panel, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
-        self.map1_new  = wx.CheckBox(panel, -1)
-        self.map1_cor  = wx.CheckBox(panel, -1)
-        self.map1_new.SetValue(1)
-        self.map1_cor.SetValue(1)
-        self.map1_op.SetSelection(0)
-        self.map1_det.SetSelection(0)
-        self.map1_show = add_button(panel, 'Show Map', size=(90, -1), action=self.onShowROIMap)
-        ir += 1
-        sizer.Add(SimpleText(panel, 'Map 1'),             (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Operator'),          (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Map 2'),             (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Detector'),          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Correct Deadtime?'), (ir, 4), (1, 1), ALL_CEN, 2)
-        ir += 1
-        sizer.Add(self.map1_roi1,          (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map1_op,            (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map1_roi2,          (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map1_det,           (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map1_cor,           (ir, 4), (1, 1), ALL_CEN, 2)
-        ir += 1
-        sizer.Add(self.map1_show, (ir, 0), (1, 1), ALL_LEFT, 2)
-        sizer.Add(SimpleText(panel, 'Reuse Previous Display'), (ir, 1), (1, 3), ALL_RIGHT, 2)
-        sizer.Add(self.map1_new, (ir, 4), (1, 1), ALL_CEN, 2)
-
-        ir += 1
-        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
-
-        # 3 Color Map
-        ir += 1
-        sizer.Add(SimpleText(panel, 'Three Color ROI Map', colour=(190, 10, 10)),
-                  (ir, 0), (1, 3), ALL_CEN, 2)
-
-        self.map3_r = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='r'))
-        self.map3_g = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='g'))
-        self.map3_b = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='b'))
-        self.map3_show = add_button(panel, 'Show Map', size=(90, -1), action=self.onShow3ColorMap)
-
-        self.map3_det  = add_choice(panel, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
-        self.map3_new  = wx.CheckBox(panel, -1)
-        self.map3_cor  = wx.CheckBox(panel, -1)
-        self.map3_new.SetValue(1)
-        self.map3_cor.SetValue(1)
-
-        self.map3_rauto = wx.CheckBox(panel, -1, 'Autoscale?')
-        self.map3_gauto = wx.CheckBox(panel, -1, 'Autoscale?')
-        self.map3_bauto = wx.CheckBox(panel, -1, 'Autoscale?')
-        self.map3_rauto.SetValue(1)
-        self.map3_gauto.SetValue(1)
-        self.map3_bauto.SetValue(1)
-        self.map3_rauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='r'))
-        self.map3_gauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='g'))
-        self.map3_bauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='b'))
-
-        self.map3_rscale = FloatCtrl(panel, precision=0, value=1, minval=0)
-        self.map3_gscale = FloatCtrl(panel, precision=0, value=1, minval=0)
-        self.map3_bscale = FloatCtrl(panel, precision=0, value=1, minval=0)
-
-        ir += 1
-        sizer.Add(SimpleText(panel, 'Red'),   (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Green'), (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Blue'),  (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Detector'),          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, 'Correct Deadtime?'), (ir, 4), (1, 1), ALL_CEN, 2)
-
-        ir += 1
-        sizer.Add(self.map3_r,                (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_g,                (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_b,                (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_det,              (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_cor,              (ir, 4), (1, 1), ALL_CEN, 2)
-
-        ir += 1
-        sizer.Add(self.map3_rauto,            (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_gauto,            (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_bauto,            (ir, 2), (1, 1), ALL_CEN, 2)
-        ir += 1
-        sizer.Add(self.map3_rscale,            (ir, 0), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_gscale,            (ir, 1), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.map3_bscale,            (ir, 2), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(panel, '<- Intensity Value for Full Scale'),     (ir, 3), (1, 2), ALL_LEFT, 2)
-
-
-        ir += 1
-        sizer.Add(self.map3_show, (ir, 0), (1, 1), ALL_LEFT, 2)
-
-        sizer.Add(SimpleText(panel, 'Reuse Previous Display'), (ir, 1), (1, 3), ALL_RIGHT, 2)
-        sizer.Add(self.map3_new, (ir, 4), (1, 1), ALL_CEN, 2)
-
-
-
-        ir += 1
-        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
-
-        pack(panel, sizer)
-        return panel
-
-
-    def onAutoScale(self, event=None, color=None, **kws):
-        if color=='r':
-            self.map3_rscale.Enable()
-            if self.map3_rauto.GetValue() == 1:  self.map3_rscale.Disable()
-        elif color=='g':
-            self.map3_gscale.Enable()
-            if self.map3_gauto.GetValue() == 1:  self.map3_gscale.Disable()
-        elif color=='b':
-            self.map3_bscale.Enable()
-            if self.map3_bauto.GetValue() == 1:  self.map3_bscale.Disable()
-
-    def onSetRGBScale(self, event=None, color=None, **kws):
-        det =self.map3_det.GetStringSelection()
-        if det == 'sum':
-            det =  None
-        else:
-            det = int(det)
-        dtcorrect = self.map3_cor.IsChecked()
-
-        if color=='r':
-            roi = self.map3_r.GetStringSelection()
-            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
-            self.map3_rauto.SetValue(1)
-            self.map3_rscale.SetValue(map.max())
-            self.map3_rscale.Disable()
-        elif color=='g':
-            roi = self.map3_g.GetStringSelection()
-            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
-            self.map3_gauto.SetValue(1)
-            self.map3_gscale.SetValue(map.max())
-            self.map3_gscale.Disable()
-        elif color=='b':
-            roi = self.map3_b.GetStringSelection()
-            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
-            self.map3_bauto.SetValue(1)
-            self.map3_bscale.SetValue(map.max())
-            self.map3_bscale.Disable()
-
-    def onShow3ColorMap(self, event=None):
-        det =self.map3_det.GetStringSelection()
-        if det == 'sum':
-            det =  None
-        else:
-            det = int(det)
-        dtcorrect = self.map3_cor.IsChecked()
-
-        r = self.map3_r.GetStringSelection()
-        g = self.map3_g.GetStringSelection()
-        b = self.map3_b.GetStringSelection()
-        rmap = self.current_file.get_roimap(r, det=det, dtcorrect=dtcorrect)
-        gmap = self.current_file.get_roimap(g, det=det, dtcorrect=dtcorrect)
-        bmap = self.current_file.get_roimap(b, det=det, dtcorrect=dtcorrect)
-
-        rscale = 1.0/self.map3_rscale.GetValue()
-        gscale = 1.0/self.map3_gscale.GetValue()
-        bscale = 1.0/self.map3_bscale.GetValue()
-        if self.map3_rauto.IsChecked():  rscale = 1.0/rmap.max()
-        if self.map3_gauto.IsChecked():  gscale = 1.0/gmap.max()
-        if self.map3_bauto.IsChecked():  bscale = 1.0/bmap.max()
-
-        map = np.array([rmap*rscale, gmap*gscale, bmap*bscale]).swapaxes(0, 2).swapaxes(0, 1)
-        if len(self.im_displays) == 0 or not self.map3_new.IsChecked():
-            self.im_displays.append(ImageFrame(config_on_frame=False))
-
-        title = '%s: R, G, B = %s, %s, %s' % (self.current_file.filename, r, g, b)
-        self.display_map(map, title=title, with_config=False)
-
-
-    def onShowROIMap(self, event=None):
-        det =self.map1_det.GetStringSelection()
-        if det == 'sum':
-            det =  None
-        else:
-            det = int(det)
-        dtcorrect = self.map1_cor.IsChecked()
-
-        roiname1 = self.map1_roi1.GetStringSelection()
-        roiname2 = self.map1_roi2.GetStringSelection()
-        map = self.current_file.get_roimap(roiname1, det=det, dtcorrect=dtcorrect)
-        title = '%s: %s' % (self.current_file.filename, roiname1)
-
-        if roiname2 != '':
-            mapx = self.current_file.get_roimap(roiname2, det=det, dtcorrect=dtcorrect)
-            op = self.map1_op.GetStringSelection()
-            if   op == '+': map +=  mapx
-            elif op == '-': map -=  mapx
-            elif op == '*': map *=  mapx
-            elif op == '/': map /=  mapx
-
-        if len(self.im_displays) == 0 or not self.map1_new.IsChecked():
-            self.im_displays.append(ImageFrame())
-
-        self.display_map(map, title=title)
 
     def display_map(self, map, title='', with_config=True):
         """display a map in an available image display"""
