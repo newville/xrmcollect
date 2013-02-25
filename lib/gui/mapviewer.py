@@ -21,17 +21,21 @@ Needed Visualizations:
 """
 import os
 import time
-from random import randrange
+from threading import Thread
 
 import wx
 import wx.lib.agw.flatnotebook as flat_nb
 import wx.lib.scrolledpanel as scrolled
 import wx.lib.mixins.inspection
+from wx._core import PyDeadObjectError
 
 import h5py
 import numpy as np
 
-from .utils import (SimpleText, EditableListBox, pack, popup,
+from wxmplot import ImageFrame
+
+from .utils import (SimpleText, EditableListBox, FloatCtrl,
+                    Closure, pack, popup,
                     add_button, add_menu, add_choice, add_menu)
 
 from ..io.xrm_mapfile import (GSEXRM_MapFile,
@@ -41,6 +45,8 @@ CEN = wx.ALIGN_CENTER|wx.ALIGN_CENTER_VERTICAL
 LEFT = wx.ALIGN_LEFT|wx.ALIGN_CENTER_VERTICAL
 RIGHT = wx.ALIGN_RIGHT|wx.ALIGN_CENTER_VERTICAL
 ALL_CEN =  wx.ALL|CEN
+ALL_LEFT =  wx.ALL|LEFT
+ALL_RIGHT =  wx.ALL|RIGHT
 
 # FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0*|All files (*.*)|*.*"
 
@@ -64,6 +70,11 @@ has already been read.
 """
 
 
+def set_choices(choicebox, choices):
+    choicebox.Clear()
+    choicebox.AppendItems(choices)
+    choicebox.SetStringSelection(choices[0])
+
 class MapViewerFrame(wx.Frame):
     _about = """XRF Map Viewer
   Matt Newville <newville @ cars.uchicago.edu>
@@ -71,10 +82,11 @@ class MapViewerFrame(wx.Frame):
     def __init__(self, conffile=None,  **kwds):
 
         kwds["style"] = wx.DEFAULT_FRAME_STYLE
-        wx.Frame.__init__(self, None, -1, size=(680, 600),  **kwds)
+        wx.Frame.__init__(self, None, -1, size=(700, 400),  **kwds)
 
         self.data = None
         self.filemap = {}
+        self.im_displays = []
         self.larch = None
 
         self.Font14=wx.Font(14, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
@@ -84,13 +96,12 @@ class MapViewerFrame(wx.Frame):
         self.Font9 =wx.Font(9, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
 
         self.SetTitle("GSE XRM MapViewer")
-        self.SetSize((850, 775))
         self.SetFont(self.Font9)
 
         self.createMainPanel()
         self.createMenus()
         self.statusbar = self.CreateStatusBar(2, 0)
-        self.statusbar.SetStatusWidths([-4, -1])
+        self.statusbar.SetStatusWidths([-3, -1])
         statusbar_fields = ["Initializing....", " "]
         for i in range(len(statusbar_fields)):
             self.statusbar.SetStatusText(statusbar_fields[i], i)
@@ -101,41 +112,240 @@ class MapViewerFrame(wx.Frame):
         splitter.SetMinimumPaneSize(175)
 
         self.filelist = EditableListBox(splitter, self.ShowFile)
-        self.detailspanel = self.createDetailsPanel(splitter)
+        self.detailspanel = self.createViewOptsPanel(splitter)
         splitter.SplitVertically(self.filelist, self.detailspanel, 1)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(splitter, 1, wx.GROW|wx.ALL, 5)
         wx.CallAfter(self.init_larch)
         pack(self, sizer)
 
-    def createDetailsPanel(self, parent):
+    def createViewOptsPanel(self, parent):
+        """ panel for selecting ROIS, plot types"""
         panel = wx.Panel(parent)
-        panel.SetMinSize((600, 250))
-        sizer = wx.GridBagSizer(8, 10)
+        panel.SetMinSize((625, 375))
+        sizer = wx.GridBagSizer(8, 8)
         self.title = SimpleText(panel, 'initializing...')
         ir = 0
-        sizer.Add(self.title, (ir, 0), (1, 8), ALL_CEN, 2)
-        # x-axis
+        sizer.Add(self.title, (ir, 0), (1, 5), ALL_CEN, 2)
+        ir += 1
+        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
+                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
 
-        #         self.x_choice = add_choice(panel, choices=[], size=(120, -1))
-        #         self.x_op     = add_choice(panel, choices=('', 'log'), size=(80, -1))
-        # self.xchoice.SetItems(list of choices)
-        # self.xchoice.SetStringSelection(default string)
+        # Map ROI
+        ir += 1
+        sizer.Add(SimpleText(panel, 'Simple ROI Map', colour=(190, 10, 10)),
+                  (ir, 0), (1, 3), ALL_CEN, 2)
+
+        self.map1_roi1 = add_choice(panel, choices=[], size=(120, -1))
+        self.map1_roi2 = add_choice(panel, choices=[], size=(120, -1))
+        self.map1_op   = add_choice(panel, choices=['/', '*', '-', '+'], size=(80, -1))
+        self.map1_det  = add_choice(panel, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
+        self.map1_new  = wx.CheckBox(panel, -1)
+        self.map1_cor  = wx.CheckBox(panel, -1)
+        self.map1_new.SetValue(1)
+        self.map1_cor.SetValue(1)
+        self.map1_op.SetSelection(0)
+        self.map1_det.SetSelection(0)
+        self.map1_show = add_button(panel, 'Show Map', size=(90, -1), action=self.onShowROIMap)
+        ir += 1
+        sizer.Add(SimpleText(panel, 'Map 1'),             (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Operator'),          (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Map 2'),             (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Detector'),          (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Correct Deadtime?'), (ir, 4), (1, 1), ALL_CEN, 2)
+        ir += 1
+        sizer.Add(self.map1_roi1,          (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map1_op,            (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map1_roi2,          (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map1_det,           (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map1_cor,           (ir, 4), (1, 1), ALL_CEN, 2)
+        ir += 1
+        sizer.Add(self.map1_show, (ir, 0), (1, 1), ALL_LEFT, 2)
+        sizer.Add(SimpleText(panel, 'Reuse Previous Display'), (ir, 1), (1, 3), ALL_RIGHT, 2)
+        sizer.Add(self.map1_new, (ir, 4), (1, 1), ALL_CEN, 2)
+
+        ir += 1
+        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
+                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
+
+        # 3 Color Map
+        ir += 1
+        sizer.Add(SimpleText(panel, 'Three Color ROI Map', colour=(190, 10, 10)),
+                  (ir, 0), (1, 3), ALL_CEN, 2)
+
+        self.map3_r = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='r'))
+        self.map3_g = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='g'))
+        self.map3_b = add_choice(panel, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='b'))
+        self.map3_show = add_button(panel, 'Show Map', size=(90, -1), action=self.onShow3ColorMap)
+
+        self.map3_det  = add_choice(panel, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
+        self.map3_new  = wx.CheckBox(panel, -1)
+        self.map3_cor  = wx.CheckBox(panel, -1)
+        self.map3_new.SetValue(1)
+        self.map3_cor.SetValue(1)
+
+        self.map3_rauto = wx.CheckBox(panel, -1, 'Autoscale?')
+        self.map3_gauto = wx.CheckBox(panel, -1, 'Autoscale?')
+        self.map3_bauto = wx.CheckBox(panel, -1, 'Autoscale?')
+        self.map3_rauto.SetValue(1)
+        self.map3_gauto.SetValue(1)
+        self.map3_bauto.SetValue(1)
+        self.map3_rauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='r'))
+        self.map3_gauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='g'))
+        self.map3_bauto.Bind(wx.EVT_CHECKBOX, Closure(self.onAutoScale, color='b'))
+
+        self.map3_rscale = FloatCtrl(panel, precision=0, value=1, minval=0)
+        self.map3_gscale = FloatCtrl(panel, precision=0, value=1, minval=0)
+        self.map3_bscale = FloatCtrl(panel, precision=0, value=1, minval=0)
+
+        ir += 1
+        sizer.Add(SimpleText(panel, 'Red'),   (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Green'), (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Blue'),  (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Detector'),          (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, 'Correct Deadtime?'), (ir, 4), (1, 1), ALL_CEN, 2)
+
+        ir += 1
+        sizer.Add(self.map3_r,                (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_g,                (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_b,                (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_det,              (ir, 3), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_cor,              (ir, 4), (1, 1), ALL_CEN, 2)
+
+        ir += 1
+        sizer.Add(self.map3_rauto,            (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_gauto,            (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_bauto,            (ir, 2), (1, 1), ALL_CEN, 2)
+        ir += 1
+        sizer.Add(self.map3_rscale,            (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_gscale,            (ir, 1), (1, 1), ALL_CEN, 2)
+        sizer.Add(self.map3_bscale,            (ir, 2), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(panel, '<- Intensity Value for Full Scale'),     (ir, 3), (1, 2), ALL_LEFT, 2)
 
 
         ir += 1
-        sizer.Add(wx.StaticLine(panel, size=(675, 3), style=wx.LI_HORIZONTAL),
-                  (ir, 1), (1, 10), wx.ALIGN_CENTER)
-        #ir += 1
-        #sizer.Add(SimpleText(panel, 'Should add fitting options'),
-        #          (ir, 1), (1, 10), wx.ALIGN_CENTER)
+        sizer.Add(self.map3_show, (ir, 0), (1, 1), ALL_LEFT, 2)
 
-        #ir += 1
-        #sizer.Add(wx.StaticLine(panel, size=(675, 3), style=wx.LI_HORIZONTAL),
-        #          (ir, 1), (1, 10), wx.ALIGN_CENTER)
+        sizer.Add(SimpleText(panel, 'Reuse Previous Display'), (ir, 1), (1, 3), ALL_RIGHT, 2)
+        sizer.Add(self.map3_new, (ir, 4), (1, 1), ALL_CEN, 2)
+
+
+
+        ir += 1
+        sizer.Add(wx.StaticLine(panel, size=(575, 3), style=wx.LI_HORIZONTAL),
+                  (ir, 0), (1, 8), wx.ALIGN_LEFT)
 
         pack(panel, sizer)
         return panel
+
+    def onAutoScale(self, event=None, color=None, **kws):
+        if color=='r':
+            self.map3_rscale.Enable()
+            if self.map3_rauto.GetValue() == 1:  self.map3_rscale.Disable()
+        elif color=='g':
+            self.map3_gscale.Enable()
+            if self.map3_gauto.GetValue() == 1:  self.map3_gscale.Disable()
+        elif color=='b':
+            self.map3_bscale.Enable()
+            if self.map3_bauto.GetValue() == 1:  self.map3_bscale.Disable()
+
+    def onSetRGBScale(self, event=None, color=None, **kws):
+        det =self.map3_det.GetStringSelection()
+        if det == 'sum':
+            det =  None
+        else:
+            det = int(det)
+        dtcorrect = self.map3_cor.IsChecked()
+
+        if color=='r':
+            roi = self.map3_r.GetStringSelection()
+            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
+            self.map3_rauto.SetValue(1)
+            self.map3_rscale.SetValue(map.max())
+        elif color=='g':
+            roi = self.map3_g.GetStringSelection()
+            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
+            self.map3_gauto.SetValue(1)
+            self.map3_gscale.SetValue(map.max())
+        elif color=='b':
+            roi = self.map3_b.GetStringSelection()
+            map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
+            self.map3_bauto.SetValue(1)
+            self.map3_bscale.SetValue(map.max())
+
+    def onShow3ColorMap(self, event=None):
+        det =self.map3_det.GetStringSelection()
+        if det == 'sum':
+            det =  None
+        else:
+            det = int(det)
+        dtcorrect = self.map3_cor.IsChecked()
+
+        r = self.map3_r.GetStringSelection()
+        g = self.map3_g.GetStringSelection()
+        b = self.map3_b.GetStringSelection()
+        rmap = self.current_file.get_roimap(r, det=det, dtcorrect=dtcorrect)
+        gmap = self.current_file.get_roimap(g, det=det, dtcorrect=dtcorrect)
+        bmap = self.current_file.get_roimap(b, det=det, dtcorrect=dtcorrect)
+
+        rscale = 1.0/self.map3_rscale.GetValue()
+        gscale = 1.0/self.map3_gscale.GetValue()
+        bscale = 1.0/self.map3_bscale.GetValue()
+        if self.map3_rauto.IsChecked():  rscale = 1.0/rmap.max()
+        if self.map3_gauto.IsChecked():  gscale = 1.0/gmap.max()
+        if self.map3_bauto.IsChecked():  bscale = 1.0/bmap.max()
+
+        map = np.array([rmap*rscale, gmap*gscale, bmap*bscale]).swapaxes(0, 2).swapaxes(0, 1)
+        if len(self.im_displays) == 0 or not self.map3_new.IsChecked():
+            self.im_displays.append(ImageFrame(config_on_frame=False))
+
+        title = '%s: R, G, B = %s, %s, %s' % (self.current_file.filename, r, g, b)
+        self.display_map(map, title=title, with_config=False)
+
+
+    def onShowROIMap(self, event=None):
+        det =self.map1_det.GetStringSelection()
+        if det == 'sum':
+            det =  None
+        else:
+            det = int(det)
+        dtcorrect = self.map1_cor.IsChecked()
+
+        roiname1 = self.map1_roi1.GetStringSelection()
+        roiname2 = self.map1_roi2.GetStringSelection()
+        map = self.current_file.get_roimap(roiname1, det=det, dtcorrect=dtcorrect)
+        title = '%s: %s' % (self.current_file.filename, roiname1)
+
+        if roiname2 != '':
+            mapx = self.current_file.get_roimap(roiname2, det=det, dtcorrect=dtcorrect)
+            op = self.map1_op.GetStringSelection()
+            if   op == '+': map +=  mapx
+            elif op == '-': map -=  mapx
+            elif op == '*': map *=  mapx
+            elif op == '/': map /=  mapx
+
+        if len(self.im_displays) == 0 or not self.map1_new.IsChecked():
+            self.im_displays.append(ImageFrame())
+
+        self.display_map(map, title=title)
+
+    def display_map(self, map, title='', with_config=True):
+        """display a map in an available image display"""
+        displayed = False
+        while not displayed:
+            try:
+                imd = self.im_displays.pop()
+                imd.display(map, title=title)
+                displayed = True
+            except IndexError:
+                imd = ImageFrame(config_on_frame=with_config)
+                imd.display(map, title=title)
+                displayed = True
+            except PyDeadObjectError:
+                displayed = False
+        self.im_displays.append(imd)
+        imd.Show()
+        imd.Raise()
 
     def init_larch(self):
         t0 = time.time()
@@ -147,7 +357,6 @@ class MapViewerFrame(wx.Frame):
         self.SetStatusText('ready')
         self.datagroups = self.larch.symtable
         self.title.SetLabel('')
-
 
     def onPlot(self, evt):    self.do_plot(newplot=True)
 
@@ -212,10 +421,19 @@ class MapViewerFrame(wx.Frame):
     def ShowFile(self, evt=None, filename=None, **kws):
         if filename is None and evt is not None:
             filename = evt.GetString()
-        print 'Show File', filename,
         if self.check_ownership(filename):
             self.filemap[filename].process()
         self.current_file = self.filemap[filename]
+        self.title.SetLabel("%s" % filename)
+
+        rois = list(self.filemap[filename].xrfmap['roimap/sum_name'])
+        rois_extra = [''] + rois
+
+        set_choices(self.map1_roi1, rois)
+        set_choices(self.map1_roi2, rois_extra)
+        set_choices(self.map3_r, rois)
+        set_choices(self.map3_g, rois)
+        set_choices(self.map3_b, rois)
 
     def createMenus(self):
         self.menubar = wx.MenuBar()
@@ -231,12 +449,21 @@ class MapViewerFrame(wx.Frame):
         self.SetMenuBar(self.menubar)
 
     def onAbout(self,evt):
-        dlg = wx.MessageDialog(self, self._about,"About MapViewer",
+        dlg = wx.MessageDialog(self, self._about,"About GSEXRM MapViewer",
                                wx.OK | wx.ICON_INFORMATION)
         dlg.ShowModal()
         dlg.Destroy()
 
     def onClose(self,evt):
+        for xrmfile in self.filemap.values():
+            xrmfile.close()
+
+        for imd in self.im_displays:
+            try:
+                imd.Destroy()
+            except:
+                pass
+
         for nam in dir(self.larch.symtable._plotter):
             obj = getattr(self.larch.symtable._plotter, nam)
             try:
@@ -258,7 +485,8 @@ class MapViewerFrame(wx.Frame):
             read = True
             path = dlg.GetPath().replace('\\', '/')
             if path in self.filemap:
-                read = popup(self, "Re-read file '%s'?" % path, 'Re-read file?')
+                read = popup(self, "Re-read file '%s'?" % path, 'Re-read file?',
+                             style=wx.YES_NO)
         dlg.Destroy()
 
         if read:
@@ -273,9 +501,30 @@ class MapViewerFrame(wx.Frame):
                 self.filemap[fname] = xrmfile
             if fname not in self.filelist.GetItems():
                 self.filelist.Append(fname)
+            #if self.check_ownership(fname):
+            #    self.process_file(fname)
+            self.ShowFile(filename=fname)
 
-            if self.check_ownership(fname):
-                self.filemap[fname].process()
+    def process_file(self, filename):
+        """Request processing of map file.
+        This can take awhile, so is done in a separate thread,
+        with updates displayed in message bar
+        """
+        xrm_map = self.filemap[filename]
+        if not xrm_map.folder_has_newdata():
+            return
+        print 'PROCESS ', filename, xrm_map.folder_has_newdata()
+        def on_process(row=0, maxrow=0, fname=None, status='unknown'):
+            if maxrow < 1 or fname is None:
+                return
+            self.SetStatusText('processing row=%i / %i for %s [%s]' %
+                               (row, maxrow, fname, status))
+
+        dthread  = Thread(target=self.filemap[filename].process,
+                          kwargs={'callback': on_process},
+                          name='process_thread')
+        dthread.start()
+        dthread.join()
 
     def check_ownership(self, fname):
         """
@@ -284,7 +533,7 @@ class MapViewerFrame(wx.Frame):
         """
         if not self.filemap[fname].check_hostid():
             if popup(self, NOT_OWNER_MSG % fname,
-                     'Not Owner of HDF5 File'):
+                     'Not Owner of HDF5 File', style=wx.YES_NO):
                 self.filemap[fname].claim_hostid()
         return self.filemap[fname].check_hostid()
 
