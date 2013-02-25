@@ -48,6 +48,8 @@ ALL_CEN =  wx.ALL|CEN
 ALL_LEFT =  wx.ALL|LEFT
 ALL_RIGHT =  wx.ALL|RIGHT
 
+FNB_STYLE = flat_nb.FNB_NO_X_BUTTON|flat_nb.FNB_SMART_TABS|flat_nb.FNB_NO_NAV_BUTTONS
+
 # FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0*|All files (*.*)|*.*"
 
 # FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0&"
@@ -118,6 +120,25 @@ class MapViewerFrame(wx.Frame):
         sizer.Add(splitter, 1, wx.GROW|wx.ALL, 5)
         wx.CallAfter(self.init_larch)
         pack(self, sizer)
+
+    def withNB(self):
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.nb = flat_nb.FlatNotebook(self, wx.ID_ANY, agwStyle=FNB_STYLE)
+        self.nb.SetBackgroundColour('#FCFCFA')
+        self.SetBackgroundColour('#F0F0E8')
+
+        self.nbpanels = []
+        for name, creator in (('Simple ROI Map',   self.SimpleMapPanel),
+                              ('3-Color ROI Map',  self.TriColorMapPanel),
+                              ('2x2 Grid',         self.MapGridPanel)):
+
+            p = creator(parent)
+            self.nb.AddPage(p, name, True)
+            self.nbpanels.append(p)
+
+        self.nb.SetSelection(0)
+        # sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
 
     def createViewOptsPanel(self, parent):
         """ panel for selecting ROIS, plot types"""
@@ -238,6 +259,7 @@ class MapViewerFrame(wx.Frame):
         pack(panel, sizer)
         return panel
 
+
     def onAutoScale(self, event=None, color=None, **kws):
         if color=='r':
             self.map3_rscale.Enable()
@@ -262,16 +284,19 @@ class MapViewerFrame(wx.Frame):
             map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
             self.map3_rauto.SetValue(1)
             self.map3_rscale.SetValue(map.max())
+            self.map3_rscale.Disable()
         elif color=='g':
             roi = self.map3_g.GetStringSelection()
             map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
             self.map3_gauto.SetValue(1)
             self.map3_gscale.SetValue(map.max())
+            self.map3_gscale.Disable()
         elif color=='b':
             roi = self.map3_b.GetStringSelection()
             map = self.current_file.get_roimap(roi, det=det, dtcorrect=dtcorrect)
             self.map3_bauto.SetValue(1)
             self.map3_bscale.SetValue(map.max())
+            self.map3_bscale.Disable()
 
     def onShow3ColorMap(self, event=None):
         det =self.map3_det.GetStringSelection()
