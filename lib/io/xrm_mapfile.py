@@ -45,7 +45,8 @@ def getFileStatus(filename):
 
 def isGSEXRM_MapFolder(fname):
     "return whether folder a valid Scan Folder (raw data)"
-    if not os.path.isdir(fname):
+    if (fname is None or not os.path.exists(fname) or
+        not os.path.isdir(fname)):
         return False
     flist = os.listdir(fname)
     for f in ('Master.dat', 'Environ.dat', 'Scan.ini', 'xmap.0001'):
@@ -250,6 +251,7 @@ class GSEXRM_MapFile(object):
         self.xrfmap   = None
         self.h5root   = None
         self.last_row = -1
+        self.rowdata = []
         self.npts = None
         self.roi_slices = None
         self.dt = debugtime()
@@ -281,7 +283,7 @@ class GSEXRM_MapFile(object):
             self.folder is not None and isGSEXRM_MapFolder(self.folder)):
             self.read_master()
             self.h5root = h5py.File(self.filename)
-            if self.dimension is None:
+            if self.dimension is None and isGSEXRM_MapFolder(self.folder):
                 self.read_master()
             create_xrfmap(self.h5root, dimension=self.dimension,
                           folder=self.folder, start_time=self.start_time)
@@ -309,7 +311,13 @@ class GSEXRM_MapFile(object):
         if self.folder is None:
             self.folder = self.xrfmap.attrs['Map_Folder']
         self.last_row = self.xrfmap.attrs['Last_Row']
-        if self.dimension is None:
+
+        try:
+            self.dimension = self.xrfmap['config/scan/dimension'].value
+        except:
+            pass
+
+        if self.dimension is None and isGSEXRM_MapFolder(self.folder):
             self.read_master()
 
     def close(self):
@@ -394,7 +402,7 @@ class GSEXRM_MapFile(object):
         if not self.check_hostid():
             raise GSEXRM_NotOwner(self.filename)
 
-        if self.dimension is None:
+        if self.dimension is None and isGSEXRM_MapFolder(self.folder):
             self.read_master()
         self.npts = None
         if len(self.rowdata) < 1:
@@ -406,7 +414,7 @@ class GSEXRM_MapFile(object):
         self.add_rowdata(row)
         self.status = GSEXRM_FileStatus.hasdata
 
-    def process(self, maxrow=None, force=False):
+    def process(self, maxrow=None, force=False, callback=None):
         "look for more data from raw folder, process if needed"
         if not self.check_hostid():
             raise GSEXRM_NotOwner(self.filename)
@@ -414,7 +422,7 @@ class GSEXRM_MapFile(object):
         if self.status == GSEXRM_FileStatus.created:
             self.initialize_xrfmap()
 
-        if self.dimension is None:
+        if force or (self.dimension is None and isGSEXRM_MapFolder(self.folder)):
             self.read_master()
 
         nrows = len(self.rowdata)
@@ -424,11 +432,17 @@ class GSEXRM_MapFile(object):
             irow = self.last_row + 1
             while irow < nrows:
                 # self.dt.add('=>PROCESS %i' % irow)
+                if hasattr(callback, '__call__'):
+                    callback(row=irow, maxrow=nrows,
+                             filename=self.filename, status='reading')
                 row = self.read_rowdata(irow)
                 #self.dt.add('  == read row data')
                 if row is not None:
                     self.add_rowdata(row)
                 #self.dt.add('  == added row data')
+                if hasattr(callback, '__call__'):
+                    callback(row=irow, maxrow=nrows,
+                             filename=self.filename, status='complete')
                 irow  = irow + 1
             # self.dt.show()
 
@@ -675,6 +689,7 @@ class GSEXRM_MapFile(object):
             g.resize((nrow, npts, nx))
 
     def claim_hostid(self):
+        "claim ownershipf of file"
         if self.xrfmap is None:
             return
         self.xrfmap.attrs['Process_Machine'] = socket.gethostname()
@@ -683,29 +698,30 @@ class GSEXRM_MapFile(object):
 
     def check_hostid(self):
         """checks host and id of file:
-        returns True if this process the owner?
+        returns True if this process the owner of the file
         """
         if self.xrfmap is None:
             return
         attrs = self.xrfmap.attrs
+        self.folder = attrs['Map_Folder']
+
         file_mach = attrs['Process_Machine']
         file_pid  = attrs['Process_ID']
-        thisname  = socket.gethostname()
-        thispid   = os.getpid()
         if len(file_mach) < 1 or file_pid < 1:
-            file_mach, file_pid = thisname, thispid
-
-        self.folder = attrs['Map_Folder']
-        return (file_mach == thisname and file_pid == thispid)
+            self.claim_hostid()
+            return True
+        return (file_mach == socket.gethostname() and
+                file_pid == os.getpid())
 
     def folder_has_newdata(self):
-        if self.folder is not None:
+        if self.folder is not None and isGSEXRM_MapFolder(self.folder):
             self.read_master()
-        return (self.last_row < len(self.rowdata))
+            return (self.last_row < len(self.rowdata)-1)
+        return False
 
     def read_master(self):
         "reads master file for toplevel scan info"
-        if self.folder is None:
+        if self.folder is None or not isGSEXRM_MapFolder(self.folder):
             return
         self.masterfile = os.path.join(nativepath(self.folder),
                                        self.MasterFile)
