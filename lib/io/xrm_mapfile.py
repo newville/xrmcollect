@@ -745,6 +745,8 @@ class GSEXRM_MapFile(object):
 
         if self.filename is None:
             self.filename = self.mapconf['scan']['filename']
+        if not self.filename.endswith('.h5'):
+            self.filename = "%s.h5" % self.filename
 
         mapconf = self.mapconf
         slow_pos = mapconf['slow_positioners']
