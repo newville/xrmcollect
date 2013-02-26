@@ -814,6 +814,34 @@ class GSEXRM_MapFile(object):
         if not self.check_hostid():
             raise GSEXRM_NotOwner(self.filename)
 
+    def get_pos(self, name, mean=True):
+        """return  position by name (matching 'roimap/pos_name' if
+        name is a string, or using name as an index if it is an integer
+        
+        with mean=True, and a positioner in the first two position,
+        returns a 1-d array of mean x-values
+
+        with mean=False, and a positioner in the first two position,
+        returns a 2-d array of x values for each pixel
+        """
+        if not self.check_hostid():
+            raise GSEXRM_NotOwner(self.filename)
+        index = -1
+        if isinstance(name, int):
+            index = name
+        else: 
+            for ix, nam in enumerae( self.xrfmap['roimap/pos_name']):
+                if nam.lower() == nam.lower():
+                    index = ix
+                    break
+                
+        if index == -1:
+            raise GSEXRM_Exception("Could not find position '%s'" % repr(name))
+        pos = self.xrfmap['roimap/pos'][:, :, index]
+        if index in (0, 1) and mean:
+            pos = pos.sum(axis=index)/pos.shape[index]
+        return pos
+
     def get_roimap(self, name, det=None, dtcorrect=True):
         """extract roi map for a pre-defined roi by name
         """
