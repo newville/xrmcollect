@@ -69,6 +69,11 @@ NOT_GSEXRM_FILE = """The File
    '%s'
 doesn't seem to be a Map File
 """
+
+NOT_GSEXRM_FOLDER = """The Folder
+   '%s'
+doesn't seem to be a Map Folder
+"""
 FILE_ALREADY_READ = """The File
    '%s'
 has already been read.
@@ -91,10 +96,11 @@ class SimpleMapPanel(wx.Panel):
 
         self.roi1 = add_choice(self, choices=[], size=(120, -1))
         self.roi2 = add_choice(self, choices=[], size=(120, -1))
+        self.scale = FloatCtrl(self, precision=4, value=1, size=(80,-1))
         self.op   = add_choice(self, choices=['/', '*', '-', '+'], size=(80, -1))
         self.det  = add_choice(self, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
-        self.newid  = wx.CheckBox(self, -1, 'Correct Deadtime?')
-        self.cor  = wx.CheckBox(self, -1, 'Reuse Previous Display?')
+        self.newid  = wx.CheckBox(self, -1, 'Reuse Previous Display?')
+        self.cor  = wx.CheckBox(self, -1, 'Correct Deadtime?')
         self.newid.SetValue(1)
         self.cor.SetValue(1)
         self.op.SetSelection(0)
@@ -102,24 +108,27 @@ class SimpleMapPanel(wx.Panel):
         self.show = add_button(self, 'Show Map', size=(90, -1), action=self.onShowMap)
 
         ir = 0
+        sizer.Add(SimpleText(self, 'Detector'),          (ir, 0), (1, 1), ALL_CEN, 2)
         sizer.Add(SimpleText(self, 'Map 1'),             (ir, 1), (1, 1), ALL_CEN, 2)
         sizer.Add(SimpleText(self, 'Operator'),          (ir, 2), (1, 1), ALL_CEN, 2)
         sizer.Add(SimpleText(self, 'Map 2'),             (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, 'Detector'),          (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, 'Factor'),            (ir, 5), (1, 1), ALL_CEN, 2)
 
         ir += 1
+        sizer.Add(self.det,           (ir, 0), (1, 1), ALL_CEN, 2)
         sizer.Add(self.roi1,          (ir, 1), (1, 1), ALL_CEN, 2)
         sizer.Add(self.op,            (ir, 2), (1, 1), ALL_CEN, 2)
         sizer.Add(self.roi2,          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(self.det,           (ir, 0), (1, 1), ALL_CEN, 2)
+        sizer.Add(SimpleText(self, '/', size=(10,-1)), (ir, 4), (1, 1), CEN, 2)        
+        sizer.Add(self.scale,         (ir, 5), (1, 1), ALL_CEN, 2)
 
         ir += 1
-        sizer.Add(self.cor,   (ir, 0), (1, 2), ALL_LEFT, 2)
-        sizer.Add(self.newid, (ir, 2), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.cor,   (ir,   0), (1, 2), ALL_LEFT, 2)
+        sizer.Add(self.newid, (ir,   2), (1, 4), ALL_LEFT, 2)
         sizer.Add(self.show,  (ir+1, 0), (1, 1), ALL_LEFT, 2)
 
         sizer.Add(wx.StaticLine(self, size=(500, 3), style=wx.LI_HORIZONTAL),
-                  (ir+2, 0), (1, 5), ALL_CEN)
+                  (ir+2, 0), (1, 6), ALL_CEN)
 
         pack(self, sizer)
 
@@ -135,21 +144,37 @@ class SimpleMapPanel(wx.Panel):
         dtcorrect = self.cor.IsChecked()
         roiname1 = self.roi1.GetStringSelection()
         roiname2 = self.roi2.GetStringSelection()
-        map = datafile.get_roimap(roiname1, det=det, dtcorrect=dtcorrect)
-        title = '%s: %s' % (datafile.filename, roiname1)
+        scale    = self.scale.GetValue()
+        if abs(scale) < 1.e-8: scale = 1.e-8
+        
+        map      = datafile.get_roimap(roiname1, det=det, dtcorrect=dtcorrect)
+        title    = roiname1
 
         if roiname2 != '':
             mapx = datafile.get_roimap(roiname2, det=det, dtcorrect=dtcorrect)
             op = self.op.GetStringSelection()
-            if   op == '+': map +=  mapx
-            elif op == '-': map -=  mapx
-            elif op == '*': map *=  mapx
-            elif op == '/': map /=  mapx
+            if   op == '+': map +=  mapx/scale
+            elif op == '-': map -=  mapx/scale
+            elif op == '*': map *=  mapx/scale
+            elif op == '/': map /=  mapx/scale
 
+            title = "(%s) %s (%s/%g)" % (roiname1, op, roiname2, scale)
+            
+        try:
+            x = datafile.get_pos(0, mean=True)
+        except:
+            x = None
+        try:
+            y = datafile.get_pos(1, mean=True)
+        except:
+            y = None
+            
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
             self.owner.im_displays.append(ImageFrame())
-        self.owner.display_map(map, title=title)
 
+        info  = 'Intensity: [%g, %g]' %(map.min(), map.max())
+        title = '%s: %s' % (datafile.filename, title)            
+        self.owner.display_map(map, title=title, info=info, x=x, y=y)
 
 class TriColorMapPanel(wx.Panel):
     """Panel of Controls for choosing what to display a 3 color ROI map"""
@@ -160,14 +185,17 @@ class TriColorMapPanel(wx.Panel):
 
         self.SetMinSize((425, 275))
 
-        self.rchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='r'))
-        self.gchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='g'))
-        self.bchoice = add_choice(self, choices=[], size=(120, -1), action=Closure(self.onSetRGBScale, color='b'))
+        self.rchoice = add_choice(self, choices=[], size=(120, -1),
+                                  action=Closure(self.onSetRGBScale, color='r'))
+        self.gchoice = add_choice(self, choices=[], size=(120, -1),
+                                  action=Closure(self.onSetRGBScale, color='g'))
+        self.bchoice = add_choice(self, choices=[], size=(120, -1),
+                                  action=Closure(self.onSetRGBScale, color='b'))
         self.show = add_button(self, 'Show Map', size=(90, -1), action=self.onShow3ColorMap)
 
         self.det  = add_choice(self, choices=['sum', '1', '2', '3', '4'], size=(80, -1))
-        self.newid  = wx.CheckBox(self, -1, 'Correct Deadtime?')
-        self.cor  = wx.CheckBox(self, -1, 'Reuse Previous Display?')
+        self.newid  = wx.CheckBox(self, -1, 'Reuse Previous Display?')
+        self.cor  = wx.CheckBox(self, -1, 'Correct Deadtime?')
         self.newid.SetValue(1)
         self.cor.SetValue(1)
 
@@ -360,21 +388,24 @@ class MapViewerFrame(wx.Frame):
         sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
         pack(parent, sizer)
 
-    def display_map(self, map, title='', with_config=True):
+    def display_map(self, map, title='', info='', x=None, y=None,
+                    with_config=True):
         """display a map in an available image display"""
         displayed = False
         while not displayed:
             try:
                 imd = self.im_displays.pop()
-                imd.display(map, title=title)
+                imd.display(map, title=title, x=x, y=y)
                 displayed = True
             except IndexError:
                 imd = ImageFrame(config_on_frame=with_config)
-                imd.display(map, title=title)
+                imd.display(map, title=title, x=x, y=y)
                 displayed = True
             except PyDeadObjectError:
                 displayed = False
         self.im_displays.append(imd)
+        imd.SetStatusText(info, 1)
+
         imd.Show()
         imd.Raise()
 
@@ -520,11 +551,11 @@ class MapViewerFrame(wx.Frame):
         print 'Would Read from Folder ', read, path
         dlg.Destroy()
         if read:
-            try:
+            if True: #try:
                 parent, fname = os.path.split(path)
                 xrmfile = GSEXRM_MapFile(folder=fname)
-            except:
-                popup(self, NOT_GSEXRM_FILE % folder,
+            else: # except:
+                popup(self, NOT_GSEXRM_FOLDER % fname,
                       "Not a Map folder")
                 return
             print 'FROM FOLDER, Filename = ', xrmfile.filename
