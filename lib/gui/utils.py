@@ -3,6 +3,7 @@ wx utils
 """
 import os
 import array
+import fpformat
 from string import maketrans
 
 import wx
