@@ -29,6 +29,9 @@ import wx.lib.scrolledpanel as scrolled
 import wx.lib.mixins.inspection
 from wx._core import PyDeadObjectError
 
+# create an Event class for updates from Processing Map Data
+(GSEXRMDataEvent, EVT_GSEXRM_DATA) = wx.lib.newevent.NewEvent()
+
 import h5py
 import numpy as np
 
@@ -38,7 +41,7 @@ from .utils import (SimpleText, EditableListBox, FloatCtrl,
                     Closure, pack, popup,
                     add_button, add_menu, add_choice, add_menu)
 
-from ..io.xrm_mapfile import (GSEXRM_MapFile,
+from ..io.xrm_mapfile import (GSEXRM_MapFile, GSEXRM_FileStatus,
                               GSEXRM_Exception, GSEXRM_NotOwner)
 
 CEN = wx.ALIGN_CENTER|wx.ALIGN_CENTER_VERTICAL
@@ -50,7 +53,7 @@ ALL_RIGHT =  wx.ALL|RIGHT
 
 FNB_STYLE = flat_nb.FNB_NO_X_BUTTON|flat_nb.FNB_SMART_TABS|flat_nb.FNB_NO_NAV_BUTTONS
 
-# FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0*|All files (*.*)|*.*"
+FILE_WILDCARDS = "X-ray Maps (*.h5)|*.h5|All files (*.*)|*.*"
 
 # FILE_WILDCARDS = "X-ray Maps (*.0*)|*.0&"
 
@@ -315,6 +318,9 @@ class MapViewerFrame(wx.Frame):
         for i in range(len(statusbar_fields)):
             self.statusbar.SetStatusText(statusbar_fields[i], i)
 
+        self.Bind(EVT_GSEXRM_DATA, self.onGSEXRM_Data)
+
+
     def createMainPanel(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
         splitter  = wx.SplitterWindow(self, style=wx.SP_LIVE_UPDATE)
@@ -463,8 +469,10 @@ class MapViewerFrame(wx.Frame):
     def createMenus(self):
         self.menubar = wx.MenuBar()
         fmenu = wx.Menu()
-        add_menu(self, fmenu, "&Open Map\tCtrl+O",
-                 "Read Map File or Folder",  self.onRead)
+        add_menu(self, fmenu, "&Open Map File\tCtrl+O",
+                 "Read Map File",  self.onReadFile)
+        add_menu(self, fmenu, "&Open Map Folder\tCtrl+F",
+                 "Read Map Folder",  self.onReadFolder)
 
         fmenu.AppendSeparator()
         add_menu(self, fmenu, "&Quit\tCtrl+Q",
@@ -500,10 +508,39 @@ class MapViewerFrame(wx.Frame):
             del obj
         self.Destroy()
 
-    def onRead(self, evt=None):
-        dlg = wx.FileDialog(self, message="Read Map",
+    def onReadFolder(self, evt=None):
+        dlg = wx.DirDialog(self, message="Read Map Folder",
+                           defaultPath=os.getcwd(),
+                           style=wx.OPEN)
+
+        path, read = None, False
+        if dlg.ShowModal() == wx.ID_OK:
+            read = True
+            path = dlg.GetPath().replace('\\', '/')
+        print 'Would Read from Folder ', read, path
+        dlg.Destroy()
+        if read:
+            try:
+                parent, fname = os.path.split(path)
+                xrmfile = GSEXRM_MapFile(folder=fname)
+            except:
+                popup(self, NOT_GSEXRM_FILE % folder,
+                      "Not a Map folder")
+                return
+            print 'FROM FOLDER, Filename = ', xrmfile.filename
+            fname = xrmfile.filename
+            if fname not in self.filemap:
+                self.filemap[fname] = xrmfile
+            if fname not in self.filelist.GetItems():
+                self.filelist.Append(fname)
+            if self.check_ownership(fname):
+                self.process_file(fname)
+            self.ShowFile(filename=fname)
+
+    def onReadFile(self, evt=None):
+        dlg = wx.FileDialog(self, message="Read Map File",
                             defaultDir=os.getcwd(),
-                            # wildcard=FILE_WILDCARDS,
+                            wildcard=FILE_WILDCARDS,
                             style=wx.OPEN)
         path, read = None, False
         if dlg.ShowModal() == wx.ID_OK:
@@ -519,16 +556,19 @@ class MapViewerFrame(wx.Frame):
                 parent, fname = os.path.split(path)
                 xrmfile = GSEXRM_MapFile(fname)
             except:
-                popup(self, NOT_GSEXRM_FILE % fnamex,
+                popup(self, NOT_GSEXRM_FILE % fname,
                       "Not a Map file!")
                 return
             if fname not in self.filemap:
                 self.filemap[fname] = xrmfile
             if fname not in self.filelist.GetItems():
                 self.filelist.Append(fname)
-            #if self.check_ownership(fname):
-            #    self.process_file(fname)
+            if self.check_ownership(fname):
+                self.process_file(fname)
             self.ShowFile(filename=fname)
+
+    def onGSEXRM_Data(self,  **kws):
+        print 'Saw GSEXRM_Data ', kws
 
     def process_file(self, filename):
         """Request processing of map file.
@@ -536,20 +576,58 @@ class MapViewerFrame(wx.Frame):
         with updates displayed in message bar
         """
         xrm_map = self.filemap[filename]
-        if not xrm_map.folder_has_newdata():
-            return
-        print 'PROCESS ', filename, xrm_map.folder_has_newdata()
-        def on_process(row=0, maxrow=0, fname=None, status='unknown'):
-            if maxrow < 1 or fname is None:
-                return
-            self.SetStatusText('processing row=%i / %i for %s [%s]' %
-                               (row, maxrow, fname, status))
+        if xrm_map.status == GSEXRM_FileStatus.created:
+            xrm_map.initialize_xrfmap()
 
-        dthread  = Thread(target=self.filemap[filename].process,
-                          kwargs={'callback': on_process},
-                          name='process_thread')
-        dthread.start()
-        dthread.join()
+        if xrm_map.dimension is None and isGSEXRM_MapFolder(self.folder):
+            xrm_map.read_master()
+
+        if self.filemap[filename].folder_has_newdata():
+
+            print 'PROCESS ', filename, xrm_map.folder_has_newdata()
+            dthread  = Thread(target=self.new_mapdata, args=(filename,))
+            dthread.start()
+            dthread.join()
+
+    def new_mapdata(self, filename):
+        xrm_map = self.filemap[filename]
+
+        nrows = len(xrm_map.rowdata)
+        if xrm_map.folder_has_newdata():
+            irow = xrm_map.last_row + 1
+            while irow < nrows:
+                row = xrm_map.read_rowdata(irow)
+                if row is not None:
+                    xrm_map.add_rowdata(row)
+                irow  = irow + 1
+                time.sleep(.001)
+                wx.Yield()
+
+        xrm_map.resize_arrays(xrm_map.last_row+1)
+        xrm_map.h5root.flush()
+
+
+
+    def OLDprocess_file(self, filename):
+        """Request processing of map file.
+        This can take awhile, so is done in a separate thread,
+        with updates displayed in message bar
+        """
+        xrm_map = self.filemap[filename]
+        def on_process(row=0, maxrow=0, filename=None, status='unknown'):
+            print 'on process ', row, maxrow, filename, status
+            if maxrow < 1 or filename is None:
+                return
+            #self.SetStatusText('processing row=%i / %i for %s [%s]' %
+            #                   (row, maxrow, fname, status))
+
+        if xrm_map.folder_has_newdata():
+            print 'PROCESS ', filename, xrm_map.folder_has_newdata()
+            dthread  = Thread(target=self.filemap[filename].process,
+                              kwargs={'callback': on_process},
+                              name='process_thread')
+            dthread.start()
+            dthread.join()
 
     def check_ownership(self, fname):
         """
