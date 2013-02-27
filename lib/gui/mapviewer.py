@@ -30,7 +30,7 @@ import wx.lib.mixins.inspection
 from wx._core import PyDeadObjectError
 
 # create an Event class for updates from Processing Map Data
-(GSEXRMDataEvent, EVT_GSEXRM_DATA) = wx.lib.newevent.NewEvent()
+# (GSEXRMDataEvent, EVT_GSEXRM_DATA) = wx.lib.newevent.NewEvent()
 
 import h5py
 import numpy as np
@@ -346,8 +346,7 @@ class MapViewerFrame(wx.Frame):
         for i in range(len(statusbar_fields)):
             self.statusbar.SetStatusText(statusbar_fields[i], i)
 
-        self.Bind(EVT_GSEXRM_DATA, self.onGSEXRM_Data)
-
+        # self.Bind(EVT_GSEXRM_DATA, self.onGSEXRM_Data)
 
     def createMainPanel(self):
         sizer = wx.BoxSizer(wx.VERTICAL)
