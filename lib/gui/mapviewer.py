@@ -554,12 +554,11 @@ class MapViewerFrame(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             read = True
             path = dlg.GetPath().replace('\\', '/')
-        print 'Would Read from Folder ', read, path
         dlg.Destroy()
         if read:
             if True: #try:
                 parent, fname = os.path.split(path)
-                xrmfile = GSEXRM_MapFile(folder=fname)
+                xrmfile = GSEXRM_MapFile(folder=str(fname))
             else: # except:
                 popup(self, NOT_GSEXRM_FOLDER % fname,
                       "Not a Map folder")

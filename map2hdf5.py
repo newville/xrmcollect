@@ -1,5 +1,10 @@
+import sys
 from lib.io.xrm_mapfile import GSEXRM_MapFile
-g = GSEXRM_MapFile(folder='MapDir')
+
+mapdir = sys.argv[1]
+print sys.argv
+
+g = GSEXRM_MapFile(folder=mapdir)
 g.process() # maxrow=100)
 g.close()
 
