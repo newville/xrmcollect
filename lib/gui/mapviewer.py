@@ -81,9 +81,16 @@ has already been read.
 
 
 def set_choices(choicebox, choices):
+    index = 0
+    try:
+        current = choicebox.GetStringSelection()
+        if current in choices:
+            index = choices.index(current)
+    except:
+        pass
     choicebox.Clear()
     choicebox.AppendItems(choices)
-    choicebox.SetStringSelection(choices[0])
+    choicebox.SetStringSelection(choices[index])
 
 
 class SimpleMapPanel(wx.Panel):
@@ -119,7 +126,7 @@ class SimpleMapPanel(wx.Panel):
         sizer.Add(self.roi1,          (ir, 1), (1, 1), ALL_CEN, 2)
         sizer.Add(self.op,            (ir, 2), (1, 1), ALL_CEN, 2)
         sizer.Add(self.roi2,          (ir, 3), (1, 1), ALL_CEN, 2)
-        sizer.Add(SimpleText(self, '/', size=(10,-1)), (ir, 4), (1, 1), CEN, 2)        
+        sizer.Add(SimpleText(self, '/', size=(10,-1)), (ir, 4), (1, 1), CEN, 2)
         sizer.Add(self.scale,         (ir, 5), (1, 1), ALL_CEN, 2)
 
         ir += 1
@@ -146,7 +153,7 @@ class SimpleMapPanel(wx.Panel):
         roiname2 = self.roi2.GetStringSelection()
         scale    = self.scale.GetValue()
         if abs(scale) < 1.e-8: scale = 1.e-8
-        
+
         map      = datafile.get_roimap(roiname1, det=det, dtcorrect=dtcorrect)
         title    = roiname1
 
@@ -159,7 +166,7 @@ class SimpleMapPanel(wx.Panel):
             elif op == '/': map /=  mapx/scale
 
             title = "(%s) %s (%s/%g)" % (roiname1, op, roiname2, scale)
-            
+
         try:
             x = datafile.get_pos(0, mean=True)
         except:
@@ -168,12 +175,12 @@ class SimpleMapPanel(wx.Panel):
             y = datafile.get_pos(1, mean=True)
         except:
             y = None
-            
+
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
             self.owner.im_displays.append(ImageFrame())
 
         info  = 'Intensity: [%g, %g]' %(map.min(), map.max())
-        title = '%s: %s' % (datafile.filename, title)            
+        title = '%s: %s' % (datafile.filename, title)
         self.owner.display_map(map, title=title, info=info, x=x, y=y)
 
 class TriColorMapPanel(wx.Panel):
