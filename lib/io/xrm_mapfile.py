@@ -82,7 +82,7 @@ def create_xrfmap(h5root, dimension=2, folder='', start_time=None):
 
     xrfmap = h5root.create_group('xrfmap')
     for key, val in attrs.items():
-        xrfmap.attrs[key] = val
+        xrfmap.attrs[key] = str(val)
 
     g = xrfmap.create_group('roimap')
     g.attrs['type'] = 'roi maps'
