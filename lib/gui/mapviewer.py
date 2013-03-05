@@ -176,11 +176,10 @@ class SimpleMapPanel(wx.Panel):
         except:
             y = None
 
-        if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
-            self.owner.im_displays.append(ImageFrame())
-
-        info  = 'Intensity: [%g, %g]' %(map.min(), map.max())
         title = '%s: %s' % (datafile.filename, title)
+        info  = 'Intensity: [%g, %g]' %(map.min(), map.max())
+        if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
+            iframe = self.owner.add_imdisplay(title)
         self.owner.display_map(map, title=title, info=info, x=x, y=y)
 
 class TriColorMapPanel(wx.Panel):
@@ -304,11 +303,10 @@ class TriColorMapPanel(wx.Panel):
         if self.gauto.IsChecked():  gscale = 1.0/gmap.max()
         if self.bauto.IsChecked():  bscale = 1.0/bmap.max()
 
+        title = '%s: (R, G, B) = (%s, %s, %s)' % (datafile.filename, r, g, b)
         map = np.array([rmap*rscale, gmap*gscale, bmap*bscale]).swapaxes(0, 2).swapaxes(0, 1)
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
-            self.owner.im_displays.append(ImageFrame(config_on_frame=False))
-
-        title = '%s: (R, G, B) = (%s, %s, %s)' % (datafile.filename, r, g, b)
+            iframe = self.owner.add_imdisplay(title, config_on_frame=False)
         self.owner.display_map(map, title=title, with_config=False)
 
     def onAutoScale(self, event=None, color=None, **kws):
@@ -394,6 +392,14 @@ class MapViewerFrame(wx.Frame):
         sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
         pack(parent, sizer)
 
+    def lassoHandler(self, data=None, selected=None, mask=None, **kws):
+        print 'map lasso: ', selected
+        
+    def add_imdisplay(self, title, config_on_frame=True):
+        self.im_displays.append(ImageFrame(output_title=title,
+                                           lasso_callback=self.lassoHandler,
+                                           config_on_frame=config_on_frame))
+
     def display_map(self, map, title='', info='', x=None, y=None,
                     with_config=True):
         """display a map in an available image display"""
@@ -404,7 +410,9 @@ class MapViewerFrame(wx.Frame):
                 imd.display(map, title=title, x=x, y=y)
                 displayed = True
             except IndexError:
-                imd = ImageFrame(config_on_frame=with_config)
+                imd = ImageFrame(output_title=title,
+                                 lasso_callback=self.lassoHandler,
+                                 config_on_frame=with_config)
                 imd.display(map, title=title, x=x, y=y)
                 displayed = True
             except PyDeadObjectError:
@@ -563,7 +571,6 @@ class MapViewerFrame(wx.Frame):
                 popup(self, NOT_GSEXRM_FOLDER % fname,
                       "Not a Map folder")
                 return
-            print 'FROM FOLDER, Filename = ', xrmfile.filename
             fname = xrmfile.filename
             if fname not in self.filemap:
                 self.filemap[fname] = xrmfile
