@@ -35,7 +35,7 @@ from wx._core import PyDeadObjectError
 import h5py
 import numpy as np
 
-from wxmplot import ImageFrame
+from wxmplot import ImageFrame, PlotFrame
 
 from .utils import (SimpleText, EditableListBox, FloatCtrl,
                     Closure, pack, popup,
@@ -179,8 +179,8 @@ class SimpleMapPanel(wx.Panel):
         title = '%s: %s' % (datafile.filename, title)
         info  = 'Intensity: [%g, %g]' %(map.min(), map.max())
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
-            iframe = self.owner.add_imdisplay(title)
-        self.owner.display_map(map, title=title, info=info, x=x, y=y)
+            iframe = self.owner.add_imdisplay(title, det=det)
+        self.owner.display_map(map, title=title, info=info, x=x, y=y, det=det)
 
 class TriColorMapPanel(wx.Panel):
     """Panel of Controls for choosing what to display a 3 color ROI map"""
@@ -306,8 +306,8 @@ class TriColorMapPanel(wx.Panel):
         title = '%s: (R, G, B) = (%s, %s, %s)' % (datafile.filename, r, g, b)
         map = np.array([rmap*rscale, gmap*gscale, bmap*bscale]).swapaxes(0, 2).swapaxes(0, 1)
         if len(self.owner.im_displays) == 0 or not self.newid.IsChecked():
-            iframe = self.owner.add_imdisplay(title, config_on_frame=False)
-        self.owner.display_map(map, title=title, with_config=False)
+            iframe = self.owner.add_imdisplay(title, config_on_frame=False, det=det)
+        self.owner.display_map(map, title=title, with_config=False, det=det)
 
     def onAutoScale(self, event=None, color=None, **kws):
         if color=='r':
@@ -333,6 +333,7 @@ class MapViewerFrame(wx.Frame):
         self.filemap = {}
         self.im_displays = []
         self.larch = None
+        self.plotframe = None
 
         self.Font14=wx.Font(14, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
         self.Font12=wx.Font(12, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
@@ -392,15 +393,38 @@ class MapViewerFrame(wx.Frame):
         sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
         pack(parent, sizer)
 
-    def lassoHandler(self, data=None, selected=None, mask=None, **kws):
-        print 'map lasso: ', selected
-        
-    def add_imdisplay(self, title, config_on_frame=True):
+    def lassoHandler(self, data=None, selected=None, det=None, mask=None, **kws):
+        mask.shape = data.shape
+        energy  = self.current_file.xrfmap['detsum/energy'].value
+        spectra = self.current_file.xrfmap['detsum/data'].value
+        spectra = spectra.swapaxes(0, 1)[mask].sum(axis=0)
+        self.show_PlotFrame()
+        spectra[np.where(spectra<1)] = 1
+        self.plotframe.plot(energy, spectra, ylog_scale=True)
+
+    def show_PlotFrame(self, do_raise=True, clear=True):
+        "make sure plot frame is enabled, and visible"
+        if self.plotframe is None:
+            self.plotframe = PlotFrame(self, title='XRF Spectra')
+        try:
+            self.plotframe.Show()
+        except wx.PyDeadObjectError:
+            self.plotframe = PlotFrame(self, title='XRF Spectra')
+            self.plotframe.Show()
+
+        if do_raise:
+            self.plotframe.Raise()
+        if clear:
+            self.plotframe.panel.clear()
+            self.plotframe.reset_config()
+
+    def add_imdisplay(self, title, det=None, config_on_frame=True):
+        on_lasso = Closure(self.lassoHandler, det=det)
         self.im_displays.append(ImageFrame(output_title=title,
-                                           lasso_callback=self.lassoHandler,
+                                           lasso_callback=on_lasso,
                                            config_on_frame=config_on_frame))
 
-    def display_map(self, map, title='', info='', x=None, y=None,
+    def display_map(self, map, title='', info='', x=None, y=None, det=None,
                     with_config=True):
         """display a map in an available image display"""
         displayed = False
@@ -410,8 +434,9 @@ class MapViewerFrame(wx.Frame):
                 imd.display(map, title=title, x=x, y=y)
                 displayed = True
             except IndexError:
+                on_lasso = Closure(self.lassoHandler, det=det)
                 imd = ImageFrame(output_title=title,
-                                 lasso_callback=self.lassoHandler,
+                                 lasso_callback=on_lasso,
                                  config_on_frame=with_config)
                 imd.display(map, title=title, x=x, y=y)
                 displayed = True
@@ -648,8 +673,6 @@ class MapViewerFrame(wx.Frame):
 
         xrm_map.resize_arrays(xrm_map.last_row+1)
         xrm_map.h5root.flush()
-
-
 
     def OLDprocess_file(self, filename):
         """Request processing of map file.
