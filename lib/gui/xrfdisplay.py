@@ -111,12 +111,20 @@ class XRFDisplayFrame(wx.Frame):
         roipanel = self.roipanel = wx.Panel(self)
         plotpanel = self.plotpanel = PlotPanel(self, fontsize=7,
                                                axisbg='#FDFDFA',
-                                               axissize=[0.08, 0.08, 0.88, 0.88],
+                                               axissize=[0.03, 0.08, 0.94, 0.90],
                                                output_title='test.xrf',
                                                messenger=self.write_message)
-        ## need to customize cursor modes:
-        # plotpane.add_cursor_mode('zoom', .....)
-        # plotpane.add_cursor_mode('report', .....)
+        #yax = plotpanel.axes.get_yaxis()
+        #print dir(yax)
+        e = np.linspace(0, 30, 2048)
+        s = (np.exp(-(e-8)**2/0.150) +
+             np.exp(-(e-9)**2/0.160)/6.0 +
+             np.exp(-(e-12)**2/0.22) )
+        
+
+        plotpanel.axes.get_yaxis().set_visible(False)
+        plotpanel.fig.set_frameon(False)
+        plotpanel.plot(e, s, ylog_scale=True)
         sizer = wx.GridBagSizer(10, 4)
 
         labstyle = wx.ALIGN_LEFT|wx.ALIGN_BOTTOM|wx.EXPAND
@@ -127,11 +135,38 @@ class XRFDisplayFrame(wx.Frame):
         def txt(label, panel, size=100):
             return wx.StaticText(panel, label=label, size=(size, -1), style=labstyle)
 
-        self.wids['ylog'] = add_choice(ctrlpanel, choices=['log', 'linear'], size=(90, -1))
+        def lin(parent, len=120, wid=2, style=wx.LI_HORIZONTAL):
+            return wx.StaticLine(self, size=(len, wid), style=style)
+        
+        self.wids['ylog'] = add_choice(ctrlpanel, choices=['log', 'linear'], size=(60, -1))
         self.wids['ylog'].SetSelection(0)
 
-        sizer.Add(txt('Y Scale:', ctrlpanel),  (0, 0), (1, 1), labstyle)
-        sizer.Add(self.wids['ylog'],           (1, 0), (1, 1), ctrlstyle)
+        self.wids['series'] = add_choice(ctrlpanel, choices=['K', 'L', 'M', 'N'], size=(60, -1))
+        self.wids['series'].SetSelection(0)
+        self.wids['elems'] = add_choice(ctrlpanel, choices=['H', 'He'], size=(60, -1))
+        self.wids['elems'].SetSelection(0)
+
+        ir = 0        
+        sizer.Add(txt('Settings:', ctrlpanel),  (ir, 0), (1, 2), labstyle)
+
+        ir += 1
+        sizer.Add(lin(ctrlpanel, 120),         (ir, 0), (1, 2), labstyle)
+        
+        ir += 1
+        sizer.Add(txt('Series:', ctrlpanel),  (ir, 0), (1, 1), labstyle)
+        sizer.Add(self.wids['series'],          (ir, 1), (1, 1), ctrlstyle)
+
+        ir += 1
+        sizer.Add(txt('Elements:', ctrlpanel),  (ir, 0), (1, 1), labstyle)
+        sizer.Add(self.wids['elems'],          (ir, 1), (1, 1), ctrlstyle)
+
+        ir += 1
+        sizer.Add(lin(ctrlpanel, 120),         (ir, 0), (1, 2), labstyle)
+        
+        ir += 1
+        sizer.Add(txt('Y Scale:', ctrlpanel),  (ir, 0), (1, 1), labstyle)
+        sizer.Add(self.wids['ylog'],           (ir, 1), (1, 1), ctrlstyle)
+
 
         ctrlpanel.SetSizer(sizer)
         sizer.Fit(ctrlpanel)
