@@ -584,10 +584,9 @@ class MapViewerFrame(wx.Frame):
             path = dlg.GetPath().replace('\\', '/')
         dlg.Destroy()
         if read:
-            if True: #try:
-                parent, fname = os.path.split(path)
-                xrmfile = GSEXRM_MapFile(folder=str(fname))
-            else: # except:
+            try:
+                xrmfile = GSEXRM_MapFile(folder=str(path))
+            except:
                 popup(self, NOT_GSEXRM_FOLDER % fname,
                       "Not a Map folder")
                 return
