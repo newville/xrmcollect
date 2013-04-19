@@ -151,6 +151,8 @@ class TrajectoryScan(object):
         the proper modes for trajectory scan"""
         if USE_STRUCK:
             self.struck.ExternalMode()
+            self.struck.put('PresetReal', 0.0)
+            self.struck.put('Prescale',   1.0)
 
         if USE_XMAP:
             # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
@@ -554,9 +556,11 @@ class TrajectoryScan(object):
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
         self.mapper.message = 'preparing scan...'
         self.mapper.info  = 'Starting'
-
+        fname = fix_filename(self.mapper.filename)
+        self.mapconf.set_datafilename(fname)
+        
         self.MasterFile = open(os.path.join(self.workdir, 'Master.dat'), 'w')
-
+     
         self.mapconf.Save(os.path.join(self.workdir, 'Scan.ini'))
         self.data_mode   = 'w'
         self.escan_saver = EscanWriter(folder=self.workdir)
