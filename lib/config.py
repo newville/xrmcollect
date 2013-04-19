@@ -128,6 +128,9 @@ class FastMapConfig(object):
                 thissect[opt] = val
             self.config[sect] = thissect
 
+    def set_datafilename(self, fname):
+        self.config['scan']['filename'] = fname
+        
     def Save(self,fname):
         o = []
         cnf = self.config
