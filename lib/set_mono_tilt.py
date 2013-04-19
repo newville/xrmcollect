@@ -39,21 +39,22 @@ def find_peak_intensity(ctrl_pv, read_pv, delay_time=0.10,
 
 def set_mono_tilt(timeout=3600.0, force=False):
     # adjust IDE mono tilt and roll DAC to maximize mono pitch
-
-    last_ts  = caget(ts_pv, as_string=True)
-    try:
-        last_ts = int(last_ts)
-    except ValueError:
-        last_ts = 0
-
-    if not force and (time.time() - last_ts < timeout):
-        return
-    
-    # find best tilt value, then roll value
-    find_peak_intensity(tilt_pv, i0_pv)
-    find_peak_intensity(roll_pv, i0_pv)
-
-    caput(ts_pv, "%i"% time.time())
+    print 'SET MONO TILT Turned Off!!'
+    return 
+#     last_ts  = caget(ts_pv, as_string=True)
+#     try:
+#         last_ts = int(last_ts)
+#     except ValueError:
+#         last_ts = 0
+# 
+#     if not force and (time.time() - last_ts < timeout):
+#         return
+#     
+#     # find best tilt value, then roll value
+#     find_peak_intensity(tilt_pv, i0_pv)
+#     find_peak_intensity(roll_pv, i0_pv)
+# 
+#     caput(ts_pv, "%i"% time.time())
 
 if __name__ == '__main__':
     set_mono_tilt(force=True)
