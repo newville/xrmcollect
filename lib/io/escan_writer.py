@@ -14,7 +14,7 @@ except:
 from string import printable
 from ConfigParser import  ConfigParser
 
-from ..xmap.read_xmap_netcdf import read_xmap_netcdf
+from .xmap_nc import read_xmap_netcdf
 from ..utils import debugtime
 from .file_utils import nativepath
 from ..config import FastMapConfig

@@ -2,8 +2,10 @@
 *~
 *#
 *.ein
+*.h5
 doc/_build
 doc/*.pdf
 build
 dist
 junk
+MapData

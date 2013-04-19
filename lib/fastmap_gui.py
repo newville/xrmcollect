@@ -665,10 +665,8 @@ class FastMapGUI(wx.Frame):
 
 def run():
     motorpvs = Connect_Motors()
-    app  = wx.PySimpleApp(redirect=False,
-                          filename='fastmap.log')
+    app  = wx.App()
     frame= FastMapGUI(motorpvs=motorpvs)
-    app.SetTopWindow(frame)
     frame.Show()
     app.MainLoop()
 
