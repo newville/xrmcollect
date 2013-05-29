@@ -218,10 +218,10 @@ class TrajectoryScan(object):
                 fnum = 1
         return fnum
 
-    def mapscan(self, filename='TestMap',scantime=10, accel=1,
-                pos1='13XRM:m1',start1=0,stop1=1,step1=0.1, dimension=1,
-                pos2=None,start2=0,stop2=1,step2=0.1, **kw):
-
+    def run_scan(self, filename='TestMap',scantime=10, accel=1,
+                 pos1='13XRM:m1',start1=0,stop1=1,step1=0.1, dimension=1,
+                 pos2=None,start2=0,stop2=1,step2=0.1, **kws):
+        
         self.dtime.clear()
 
         if pos1 not in self.positioners:
@@ -572,7 +572,7 @@ class TrajectoryScan(object):
             scan['start2'] = 0
             scan['stop2'] = 0
 
-        self.mapscan(**scan)
+        self.run_scan(**scan)
         self.MasterFile.close()
         self.mapper.message = 'Scan finished: %s' % (scan['filename'])
         self.setIdle()
