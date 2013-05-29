@@ -26,7 +26,7 @@ from XPS_C8_drivers import  XPS
 opts, args = getopt.getopt(sys.argv[1:], "fba:s:d:t:", ['fore', 'back', 'axis=','span=','delta=','time='])
 
 traj_name = 'foreward.trj'
-axis  = 'y'
+axis  = 'th'
 span  = 1.00000
 delta = 0.002
 dwelltime = 5.0
@@ -35,7 +35,7 @@ for key, val in opts:
     if key in ('-b','--back'):
         traj_name = 'backward.trj'
     elif key in ('-a', '--axis'):
-        if val in ('x','y'):
+        if val in ('x', 'y', 'th'):
             axis = val
     elif key in ('-s', '--span'):
         span = float(val)
@@ -54,28 +54,15 @@ class config:
     passwd = 'Administrator'
     traj_folder = 'Public/trajectories'
     group_name = 'FINE'
-    positioners = 'X Y THETA'
-#    gather_outputs = ['FINE.X.CurrentPosition',
-#                       'FINE.X.FollowingError',
-#                       'FINE.X.CurrentVelocity',                      
-#                       'FINE.X.SetpointAcceleration',                      
-#                       'FINE.Y.CurrentPosition',
-#                       'FINE.Y.FollowingError',
-#                       'FINE.Y.CurrentVelocity',                                            
-#                       'FINE.Y.SetpointAcceleration',
-#                       ]
-    
+    positioners = ('X', 'Y', 'THETA')
     gather_outputs = [
         'FINE.X.SetpointPosition',
         'FINE.X.CurrentPosition',
-        'FINE.X.CurrentVelocity',
-        #'FINE.Y.SetpointPosition',
-        #'FINE.Y.CurrentPosition',
-        #'FINE.Y.CurrentVelocity',
-        #'FINE.THETA.SetpointPosition',
-        #'FINE.THETA.CurrentPosition',
-        #'FINE.THETA.CurrentVelocity',                      
-                      ]
+        'FINE.Y.SetpointPosition',
+        'FINE.Y.CurrentPosition',
+        'FINE.THETA.SetpointPosition',
+        'FINE.THETA.CurrentPosition',
+        ]
     
 def Create_LineTraj(axis='x', dwelltime=10, span=1.00, step=0.01):
     """create a PVT trajectory file for a single linear motion
@@ -92,55 +79,49 @@ def Create_LineTraj(axis='x', dwelltime=10, span=1.00, step=0.01):
     print '   Total time ',  dwelltime
     print '   Line Speed ',  line_speed
     
-
     max_accel = 10.0
-
     ramp_time = abs(line_speed / max_accel)
-    ramp_dist = line_speed * ramp_time / 2.0
+    ramp_dist = line_speed * ramp_time ### * 2
 
     print '   Ramp time = ', ramp_time , ramp_dist, ' accel = ', max_accel
     
-    yd_ramp = yd_line = yvelo = 0.00
-    xd_ramp = xd_line = xvelo = 0.00
+    yramp = ydist = yvelo = 0.00
+    tramp = tdist = tvelo = 0.00
+    xramp = xdist = xvelo = 0.00
     
     if axis.lower().startswith('y'):
-        yd_ramp, yd_line, yvelo = ramp_dist, span, line_speed
+        yramp, ydist, yvelo = ramp_dist, span, line_speed
+    elif axis.lower().startswith('t'):
+        tramp, tdist, tvelo = ramp_dist, span, line_speed
     else:
-        xd_ramp, xd_line, xvelo = ramp_dist, span, line_speed
+        xramp, xdist, xvelo = ramp_dist, span, line_speed
         
-    traj = [
-        "%f, %f, %f, %f, %f, 0, 0" % (ramp_time, xd_ramp, xvelo, yd_ramp, yvelo),
-        "%f, %f, %f, %f, %f, 0, 0" % (dwelltime, xd_line, xvelo, yd_line, yvelo),
-        "%f, %f, %f, %f, %f, 0, 0" % (ramp_time, xd_ramp,     0, yd_ramp,     0),
-        ]
+    fmt = "%f, %f, %f, %f, %f, %f, %f"
+    traj = [fmt % (ramp_time, xramp, xvelo, yramp, yvelo, tramp, tvelo),
+            fmt % (dwelltime, xdist, xvelo, ydist, yvelo, tdist, tvelo),
+            fmt % (ramp_time, xramp,     0, yramp,     0, tramp,     0)]
+
     # print  '\n'.join(traj), xd_ramp, yd_ramp
     print '================================'
     
-    return '\n'.join(traj), xd_ramp, yd_ramp
+    return '\n'.join(traj), (-xramp, -yramp, -tramp)
 
 def upload_trajectories(axis='x', dwelltime=10, span=1.00, step=0.01):
-    fore_traj, xdr1, ydr1 = Create_LineTraj(axis=axis, dwelltime=dwelltime, span= span, step=step)
-    back_traj, xdr2, ydr2 = Create_LineTraj(axis=axis, dwelltime=dwelltime, span=-span, step=step)
+    kws = dict(axis=axis, dwelltime=dwelltime, step=step)
+    f_traj, f_ramps = Create_LineTraj(span=span, **kws)
+    b_traj, b_ramps = Create_LineTraj(span=-span, **kws)
 
-    # print ': UPLOAD TRAJECTORY:: \n ', fore_traj, '\n  x/y dr = ', xdr1, ydr1
+    print ': UPLOAD TRAJECTORY::\n', f_traj, '\n  fore_ramps=', f_ramps
 
     ftpconn = ftplib.FTP()
     ftpconn.connect(config.host)
     ftpconn.login(config.user, config.passwd)
     ftpconn.cwd(config.traj_folder)
 
-    ftpconn.storbinary('STOR foreward.trj', StringIO(fore_traj))
-    ftpconn.storbinary('STOR backward.trj', StringIO(back_traj))
+    ftpconn.storbinary('STOR foreward.trj', StringIO(f_traj))
+    ftpconn.storbinary('STOR backward.trj', StringIO(b_traj))
     ftpconn.close()
-    print 'uploaded trajectories'
-    print '##Fore'
-    print fore_traj
-    #print '##Back'
-    #print back_traj
-    ftpconn.close()
-    print 'Ramps: ', xdr1, xdr2, ydr1, ydr2
-    return  xdr1, ydr1
-
+    return  f_ramps, b_ramps
 
 def CheckReturn(fname, ret):
     if ret[0] != 0:
@@ -202,7 +183,7 @@ dt = 1/steps_per_sec
 print 'Scan Range = ', span, 'dwelltime = ', dwelltime, ' step size = ', delta
 print 'Time Per Step = ', dt,  '  Steps per second = ', steps_per_sec, ' Npts = ', npts
 
-struck.Dwell = dt
+# struck.Dwell = dt
 
 offset = max(2, int(0.01 +  0.05 * steps_per_sec)) * delta
 if axis == 'x':
@@ -213,18 +194,33 @@ else:
 print 'OFFSET = ', offset, delta, delx, dely
 
 
-xdr1, ydr1 = upload_trajectories(axis=axis, dwelltime=dwelltime, span=span, step=delta)
+f_ramps, b_ramps = upload_trajectories(axis=axis, dwelltime=dwelltime, span=span, step=delta)
 
-print 'MOVE TO -Ramps: ', xdr1, ydr1
-## xps.GroupMoveAbsolute(socketID, 'FINE', (-xdr1, -ydr1, 0))
-xps.GroupMoveRelative(socketID, 'FINE', (-xdr1, -ydr1, 0))
+ramps = f_ramps
+if traj_name.startswith('back'):
+    ramps = b_ramps
+print 'MOVE TO -Ramps: ', dt, ramps
 
-time.sleep(0.250)
+xps.GroupMoveRelative(socketID, 'FINE', ramps)
+
+time.sleep(0.1)
+ret = xps.GroupStatusGet(socketID, config.group_name)
+if ret < 10:
+    print 'Motion not ready'
+    sys.exit()
+if ret > 39:
+    time.sleep(0.25)
+    ret = xps.GroupStatusGet(socketID, config.group_name)    
+
+
+ret = xps.GroupStatusGet(socketID, config.group_name)
+
+struck.start()
 
 ret = xps.GatheringReset(socketID)
 
 ret = xps.GatheringConfigurationSet(socketID, config.gather_outputs)
-ret = xps.MultipleAxesPVTPulseOutputSet(socketID, config.group_name,  2, 2, dt)
+ret = xps.MultipleAxesPVTPulseOutputSet(socketID, config.group_name,  2, 3, dt)
 
 CheckReturn('MultipleAxesPVTPulseOutputSet', ret)
 
@@ -253,9 +249,9 @@ ret = xps.EventExtendedConfigurationTriggerGet(socketID)
 
 eventID, m = xps.EventExtendedStart(socketID)
 ret = xps.EventExtendedAllGet(socketID)
-print 'EventExtendedStart ', eventID, m, ret
+
 time.sleep(0.1)
-struck.start()
+
 
 ret = xps.MultipleAxesPVTExecution(socketID, config.group_name, traj_name, 1)
 
@@ -273,10 +269,10 @@ CheckReturn('GatheringStop', ret)
 
 ret, npulses_out, max_pulses = xps.GatheringCurrentNumberGet(socketID)
 
-print 'GatheringCurrentNumberGet: ', ret, npulses_out   
+# print 'GatheringCurrentNumberGet: ', ret, npulses_out   
 
 ret,  buff = xps.GatheringDataMultipleLinesGet(socketID, 0, npulses_out)
-print 'GatheringDataMultipleLinesGet: ', ret, len(buff)
+# print 'GatheringDataMultipleLinesGet: ', ret, len(buff)
 if ret < 0:
     time.sleep(0.1)
     ret = xps.GatheringStopAndSave(socketID)
