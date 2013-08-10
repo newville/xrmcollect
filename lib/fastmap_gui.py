@@ -125,19 +125,20 @@ class FastMapGUI(wx.Frame):
         self.dimchoice = wx.Choice(pane, size=(120,30))
         self.m1choice = wx.Choice(pane,  size=(120,30))
         self.m1units  = SimpleText(pane, "",minsize=(50,20))
-        self.m1start  = FloatCtrl(pane, precision=4, value=0)
-        self.m1stop   = FloatCtrl(pane, precision=4, value=1)
-        self.m1step   = FloatCtrl(pane, precision=4, value=0.1)
+        mopts = {'precision': 4, 'act_on_losefocus': True}
+        topts = {'precision': 3, 'act_on_losefocus': True, 'minval': 0}
+        self.m1start  = FloatCtrl(pane, value=0, **mopts)
+        self.m1stop   = FloatCtrl(pane, value=1, **mopts)
+        self.m1step   = FloatCtrl(pane, value=0.1, **mopts)
 
         self.m1npts   = SimpleText(pane, "0",minsize=(55,20))
-        # self.rowtime  = FloatCtrl(pane, precision=1, value=10., min=0.)
-        self.pixtime  = FloatCtrl(pane, precision=3, value=0.100, minval=0.)
+        self.pixtime  = FloatCtrl(pane, value=0.100, minval=0., **topts)
 
         self.m2choice = wx.Choice(pane, size=(120,30),choices=[])
         self.m2units  = SimpleText(pane, "",minsize=(50,20))
-        self.m2start  = FloatCtrl(pane, precision=4, value=0)
-        self.m2stop   = FloatCtrl(pane, precision=4, value=1)
-        self.m2step   = FloatCtrl(pane, precision=4, value=0.1)
+        self.m2start  = FloatCtrl(pane, value=0, **mopts)
+        self.m2stop   = FloatCtrl(pane, value=1, **mopts)
+        self.m2step   = FloatCtrl(pane, value=0.1, **mopts)
         self.m2npts   = SimpleText(pane, "0",minsize=(60,20))
 
         self.maptime  = SimpleText(pane, "0")
