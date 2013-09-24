@@ -43,9 +43,9 @@ DiscontinuityAngle = 0.01
 
 Line = %f, %f
 """
-    pvt_template = """%(ramptime)f, %(xramp)f, %(xvelo)f, %(yramp)f, %(yvelo)f, %(tramp)f, %(tvelo)f
-%(scantime)f, %(xdist)f, %(xvelo)f, %(ydist)f, %(yvelo)f, %(tdist)f, %(tvelo)f
-%(ramptime)f, %(xramp)f,       0.0, %(yramp)f,       0.0, %(tramp)f,   0.0
+    pvt_template = """%(ramptime)9.5f, %(xramp)9.5f, %(xvelo)9.5f, %(yramp)9.5f, %(yvelo)9.5f, %(tramp)9.5f, %(tvelo)9.5f
+%(scantime)9.5f, %(xdist)9.5f, %(xvelo)9.5f, %(ydist)9.5f, %(yvelo)9.5f, %(tdist)9.5f, %(tvelo)9.5f
+%(ramptime)9.5f, %(xramp)9.5f, %(xzero)9.5f, %(yramp)9.5f, %(xzero)9.5f, %(tramp)9.5f, %(xzero)9.5f
 """
 
     def __init__(self, host=None, user=None, passwd=None,
@@ -90,51 +90,61 @@ Line = %f, %f
     def upload_trajFile(self, fname,  data):
         self.ftp_connect()
         print 'Upload trajectory ', fname
-        print data
+
         self.ftpconn.cwd(config.traj_folder)
         self.ftpconn.storbinary('STOR %s' %fname, StringIO(data))
         self.ftp_disconnect()
 
-
-    def DefineLineTrajectories(self, axis='x', start=0, stop=1, accel=10,
+    def DefineLineTrajectories(self, axis='x', start=0, stop=1, accel=20,
                                step=0.001, scantime=10.0, **kws):
         print 'Define Line Trajectory ' 
         """defines 'forward' and 'backward' trajectories for a line scan
         in PVT Mode"""
+        
+        axis =  axis[0].lower()   # 'x', 'y', 't'
 
         span = (stop - start)*1.0
         sign = span/abs(span)
-        scantime = abs(scantime)
-        pixeltime = scantime * step / abs(span)
-        speed    = span / scantime
-        ramptime = abs(speed / accel)
-        ramp     = speed * ramptime
-        axis =  axis[0].lower()   # 'x', 'y', 't'
+        speed = span/scantime
         
+        MAX_ACCEL = 20.0
+        
+        accel = min(MAX_ACCEL, accel)
+        pixeltime = scantime * step / abs(span)
+
+        ramp      = max(span/100.0, 0.05)
+        ramptime  = speed / accel
+        rampaccel = speed / ramptime
+
+        if abs(rampaccel) > MAX_ACCEL:
+            ramptime = 1.50 * speed / MAX_ACCEL
+
         fore_traj = {'scantime':scantime, 'axis':axis, 'accel': accel,
-                     'ramptime': ramptime, 'pixeltime': pixeltime}
+                     'ramptime': ramptime, 'pixeltime': pixeltime,
+                     'rampdist': ramp, 'xzero': 0.0}
 
         for ax in ('x', 'y', 't'):
             for attr in ('start', 'stop', 'step', 'velo', 'ramp', 'dist'):
                 fore_traj["%s%s" % (ax, attr)] = 0.
 
-        back_traj = fore_traj.copy()
-
         if axis == 't':
             fore_traj.update({'tstart': start, 'tstop': stop,  'tstep': step,
                               'tvelo':  speed, 'tramp': ramp,  'tdist': span})
-            back_traj.update({'tstart': stop,  'tstop': start, 'tstep': step,
-                              'tvelo': -speed, 'tramp':-ramp,  'tdist': -span})
         elif axis == 'y':
             fore_traj.update({'ystart': start, 'ystop': stop,  'ystep': step,
                               'yvelo':  speed, 'yramp': ramp,  'ydist': span})
-            back_traj.update({'ystart': stop,  'ystop': start, 'ystep': step,
-                              'yvelo': -speed, 'yramp':-ramp,  'ydist': -span})
         elif axis == 'x':
             fore_traj.update({'xstart': start, 'xstop': stop,  'xstep': step,
                               'xvelo':  speed, 'xramp': ramp,  'xdist': span})
-            back_traj.update({'xstart': stop,  'xstop': start, 'xstep': step,
-                              'xvelo': -speed, 'xramp': -ramp, 'xdist':-span})
+
+        back_traj = fore_traj.copy()
+        for ax in ('x', 'y', 't'):
+            alpha, omega = "%sstart" % (ax), "%sstop" % (ax)
+            start, stop = fore_traj[alpha], fore_traj[omega]
+            back_traj[alpha], back_traj[omega] = stop, start
+            for attr in ('velo', 'ramp', 'dist'):
+                aname = "%s%s" % (ax, attr)
+                back_traj[aname] = -fore_traj[aname]
 
         self.trajectories['backward'] = back_traj
         self.trajectories['foreward'] = fore_traj
@@ -145,6 +155,7 @@ Line = %f, %f
             return True
         except:
             return False
+        # return fore_traj, back_traj
 
 
     def abortScan(self):
@@ -169,7 +180,7 @@ Line = %f, %f
         traj_file = '%s.trj'  % name
         axis = traj['axis']
         dtime = traj['pixeltime']
-        print 'Run Trajectory  ' , traj_file, ramps
+        print 'Run Trajectory  ' , traj_file
 
         ramps = (-traj['xramp'], -traj['yramp'], -traj['tramp'])
         self.xps.GroupMoveRelative(self.ssid, 'FINE', ramps)
@@ -195,22 +206,30 @@ Line = %f, %f
         self.gather_titles  = "%s\n#%s\n" % (config.gather_titles,
                                              "  ".join(gather_titles))
            
-
         self.xps.GatheringReset(self.ssid)
-        self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
 
+        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, config.group_name, 1, 3, dtime)
+        self.check_return('MultipleAxesPVTPulseOutputSet', ret)
 
-        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, config.group_name,
-                                                     2, 3, dtime)
+        ret = self.xps.MultipleAxesPVTPulseOutputGet(self.ssid, config.group_name)
+        self.check_return('MultipleAxesPVTPulseOutputGet', ret)
+
         ret = self.xps.MultipleAxesPVTVerification(self.ssid, config.group_name, traj_file)
+        self.check_return('MultipleAxesPVTVerification', ret)
+        
+        ret = self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
+        self.check_return('GatheringConfigurationSet', ret)
 
-        buffer = ('Always', 'FINE.PVT.TrajectoryPulse',)
-        o = self.xps.EventExtendedConfigurationTriggerSet(self.ssid, buffer,
-                                                          ('0','0'), ('0','0'),
-                                                          ('0','0'), ('0','0'))
+        ret = self.xps.GatheringConfigurationGet(self.ssid)
+        self.check_return('GatheringConfigurationGet', ret)
 
-        o = self.xps.EventExtendedConfigurationActionSet(self.ssid,  ('GatheringOneData',),
-                                                         ('',), ('',),('',),('',))
+        triggers = ('Always', 'FINE.PVT.TrajectoryPulse',)
+        ret = self.xps.EventExtendedConfigurationTriggerSet(self.ssid, triggers,
+                                ('0','0'), ('0','0'), ('0','0'), ('0','0'))
+        self.check_return('EventExtConfTriggerSet', ret)
+       
+        ret = self.xps.EventExtendedConfigurationActionSet(self.ssid,
+            ('GatheringOneData',), ('0',), ('0',), ('0',), ('0',))
 
         eventID, m = self.xps.EventExtendedStart(self.ssid)
 
@@ -223,9 +242,8 @@ Line = %f, %f
         return npulses
 
     def RunLineTrajectoryXY(self,name='foreward', verbose=False,
-                            save=True,
-                            outfile='Gather.dat', debug=False):
-        traj = self.trajectories.get(name,None)
+                            save=True, outfile='Gather.dat', debug=False):
+        traj = self.trajectories.get(name, None)
         if traj is None:
             print 'Cannot find trajectory named %s' %  name
             return
