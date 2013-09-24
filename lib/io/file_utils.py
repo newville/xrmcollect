@@ -5,7 +5,7 @@ from string import printable, maketrans
 from random import seed, randrange
 
 WIN_BASE = 'T:\\'
-UNIX_BASE = '/cars5/Data/'
+UNIX_BASE = '/Volumes/Data/'
 
 BAD_FILECHARS = ';~,`!%$@?*#:"/|\'\\\t\r\n (){}[]<>'
 BAD_FILETABLE = maketrans(BAD_FILECHARS, '_'*len(BAD_FILECHARS))

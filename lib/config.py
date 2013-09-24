@@ -25,7 +25,7 @@ __c = (('general', ('mapdb', 'struck', 'scaler', 'xmap', 'mono',
 conf_objs = OrderedDict(__c)
         
 conf_files = ('MapDefault.ini',
-              '//cars5/Data/xas_user/config/FastMap/Default.ini')
+              '/Volumes/Data/xas_user/config/FastMap/Default.ini')
 
 
 ##struck = 13IDC:str:
@@ -37,11 +37,12 @@ mapdb = 13XRM:map:
 mono = 13IDA:
 struck = 13IDE:SIS1
 scaler = 13IDE:scaler1
-xmap = dxpMercury:
+# xmap = dxpMercury:
+xmap = 13SDD1:
 fileplugin = netCDF1:
-basedir = //cars5/Data/xas_user/June2011/_Setup
+basedir = //Volumess/Data/xas_user/2013.2/_Setup
 scandir = Scan00001
-envfile = //cars5/Data/xas_user/config/XRM_XMAP_PVS_IDE.DAT
+envfile = /Volumes/Data/xas_user/config/IDE_SDD1_ENV.DAT
 [xps]
 type = NewportXPS
 mode = XYGroup
