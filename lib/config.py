@@ -37,7 +37,6 @@ mapdb = 13XRM:map:
 mono = 13IDA:
 struck = 13IDE:SIS1
 scaler = 13IDE:scaler1
-# xmap = dxpMercury:
 xmap = 13SDD1:
 fileplugin = netCDF1:
 basedir = //Volumess/Data/xas_user/2013.2/_Setup
@@ -50,7 +49,7 @@ host = 164.54.160.180
 user   = Administrator
 passwd = Administrator
 group = FINE
-positioners= X, Y
+positioners= X, Y, THETA
 [scan]
 filename = scan.001
 dimension = 2
