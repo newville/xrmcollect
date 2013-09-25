@@ -70,6 +70,7 @@ class TrajectoryScan(object):
         self.xmap = None
         if USE_STRUCK:
             self.struck = Struck(struck, scaler=scaler)
+            self.struck.read_all_mcas()
         if USE_XMAP:
             self.xmap = MultiXMAP(xmappv, filesaver=fileplugin)
             self.xmap.SpectraMode()
@@ -110,9 +111,8 @@ class TrajectoryScan(object):
         if char_value is not None:
             os.chdir(os.path.abspath(nativepath(char_value)))
 
-    def setWorkingDirectory(self):
-        self.write('=Creating scan folder: %s / %s' % (os.getcwd(),
-                                                         self.mapper.basedir))
+    def setWorkingDirectory(self): 
+
         basedir = os.path.abspath(nativepath(self.mapper.basedir))
         try:
             os.chdir(basedir)
@@ -143,6 +143,7 @@ class TrajectoryScan(object):
 
         self.mapper.workdir = subdir
         self.workdir = os.path.abspath(os.path.join(basedir,subdir))
+        self.write('=Scan folder: %s' % self.workdir)
 
         if USE_XMAP:
             self.xmap.setFilePath(winpath(self.workdir))
@@ -165,10 +166,10 @@ class TrajectoryScan(object):
             self.xmap.setFileTemplate('%s%s.%4.4d')
             self.xmap.setFileWriteMode(2)
             self.xmap.MCAMode(filename='xmap', # filename,
-                              npulses=npulses-1)
+                              npulses=npulses)
         if USE_XSP3:
             self.xsp3.ERASE = 1
-            self.xsp3.NumImages = npulses-1
+            self.xsp3.NumImages = npulses
         self.ROI_Written = False
         self.ENV_Written = False
         self.dtime.add('prescan done %s %s' %(repr(USE_STRUCK), repr(USE_XMAP)))
@@ -284,11 +285,12 @@ class TrajectoryScan(object):
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
 
-        success = self.xps.DefineLineTrajectories(**linescan)
-        if not success:
+        
+        if not self.xps.DefineLineTrajectories(**linescan):
             print 'Failed to define trajectory!!'
             self.postscan()
-
+            return
+        
         self.dtime.add('trajectory defined')
 
         self.PV(pos1).put(start1, wait=False)
@@ -374,6 +376,7 @@ class TrajectoryScan(object):
         self.mapper.info = "Finished"
         self.dtime.add('after writing last row')
         self.postscan()
+        self.write('done.')
         self.dtime.add('map after postscan')
 
     def ExecuteTrajectory(self, name='line', filename='TestMap',
@@ -519,27 +522,27 @@ class TrajectoryScan(object):
 
         if USE_STRUCK:
             wrote_struck = False
-            counter = 0
+            counter = 0 
+            time.sleep(0.1)
             while not wrote_struck and counter < 10:
                 counter = counter + 1
                 try:
-                    self.struck.saveMCAdata(fname=strk_fname, ignore_prefix='_')
+                    self.struck.saveMCAdata(fname=strk_fname)
                     wrote_struck = True
                 except:
                     print 'trouble saving struck data.. will retry'
-                    time.sleep(0.50)
-                    print 'Exception Raised: ', sys.exc_info()
+                time.sleep(0.1 + 0.2*counter)
             if not wrote_struck:
                 print "Could not SAVE STRUCK DATA!!!!!"
 
-            self.dtime.add('struck saved')
+            self.dtime.add('struck saved (%i tries)' % counter)
 
         # wait for saving of gathering file to complete
         saver_thread.join()
         
         self.dtime.add('xps saved')
         rowinfo = self.make_rowinfo(xmap_fname, strk_fname, xps_fname, ypos=ypos)
-        self.dtime.add('Write Row Data: done', self.xps.nlines_out, rowinfo)
+        self.dtime.add('WriteRowData done: %i, %s' %(self.xps.nlines_out, rowinfo))
         return (self.xps.nlines_out, nxmap, rowinfo)
 
     def make_filename(self, name, number):
@@ -551,7 +554,7 @@ class TrajectoryScan(object):
         s = os.path.split(s_fname)[1]
         g = os.path.split(g_fname)[1]
         dt = time.time() - self.scan_t0
-        return '%.4f %s %s %s %9.2f\n' % (ypos,x,s,g,dt)
+        return '%.4f %s %s %s %9.2f\n' % (ypos, x, s, g, dt)
 
     def Write_EnvData(self,filename='Environ.dat'):
         fh = open(filename,'w')
