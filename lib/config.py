@@ -35,7 +35,7 @@ default_conf = """# FastMap configuration file (default)
 [general]
 mapdb = 13XRM:map:
 mono = 13IDA:
-struck = 13IDE:SIS1
+struck = 13IDE:SIS1:
 scaler = 13IDE:scaler1
 xmap = 13SDD1:
 fileplugin = netCDF1:
