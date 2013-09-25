@@ -15,8 +15,6 @@ class DXP(epics.Device):
 
     def __init__(self,prefix,mca=1):
         self._prefix = "%sdxp%i" % (prefix, mca)
-        self._maxrois = MAX_ROIS
-
         epics.Device.__init__(self, self._prefix, delim=':')
         epics.poll()
 
@@ -29,9 +27,8 @@ class MCA(epics.Device):
 
     def __init__(self,prefix,mca=1):
         self._prefix = "%smca%i" % (prefix, mca)
-        self._maxrois = MAX_ROIS
         attrs = list(self._attrs)
-        for i in range(self._maxrois):
+        for i in range(MAX_ROIS):
             attrs.extend(['R%i'%i, 'R%iN' %i, 'R%iNM' %i,
                           'R%iLO'%i,'R%iHI'%i, 'R%iBG'%i])
 
@@ -41,7 +38,7 @@ class MCA(epics.Device):
 
     def getrois(self):
         rois = OrderedDict()
-        for i in range(self._maxrois):
+        for i in range(MAX_ROIS):
             name = self.get('R%iNM'%i)
             if name is not None and len(name.strip()) > 0:
                 rois[name] = (self.get('R%iLO'%i),self.get('R%iHI'%i))
@@ -54,10 +51,11 @@ class MultiXMAP(epics.Device):
     """
     multi-Channel XMAP DXP device
     """
-    attrs = ('PresetReal','Dwell','EraseStart','StopAll',
-             'PresetMode', 'PixelsPerBuffer_RBV',
-             'NextPixel', 'PixelsPerRun', 'Apply',
-             'CollectMode', 'SyncCount', 'BufferSize_RBV')
+    
+    attrs = ['PresetReal','Dwell','Acquiring', 'EraseStart','StopAll',
+             'PresetMode', 'PixelsPerBuffer_RBV', 'NextPixel',
+             'PixelsPerRun', 'Apply', 'CollectMode', 'SyncCount',
+             'BufferSize_RBV']
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
@@ -65,22 +63,22 @@ class MultiXMAP(epics.Device):
                  'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
-    def __init__(self,prefix,filesaver='netCDF1:',nmca=4):
-        attrs = list(self.attrs)
-        attrs.extend(['%s%s' % (filesaver,p) for p in self.pathattrs])
-
+    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver',
+                'pathattrs', '_nonpvs', 'nmcas', 'dxps', 'mcas')
+    
+    def __init__(self, prefix, filesaver='netCDF1:',nmca=4):
         self.filesaver = filesaver
         self._prefix = prefix
         self.nmca   = nmca
 
-        self.dxps   = [DXP(prefix,i+1) for i in range(nmca)]
-        self.mcas   = [MCA(prefix,i+1) for i in range(nmca)]
-        epics.Device.__init__(self, prefix, attrs=attrs, delim='')
+        self.dxps   = [DXP(prefix, i+1) for i in range(nmca)]
+        self.mcas   = [MCA(prefix, i+1) for i in range(nmca)]
 
-        time.sleep(0.1)
-        self.filePut('EnableCallbacks',  1)
-        self.filePut('AutoSave',   1)
-        self.filePut('FileFormat', 0)  # netCDF mode
+        epics.Device.__init__(self, prefix, attrs=self.attrs,
+                              delim='', mutable=True)
+        for p in self.pathattrs:
+            pvname = '%s%s%s' % (prefix, filesaver, p)
+            self.add_pv(pvname, attr=p)
 
     def get_calib(self):
         return [m.get_calib() for m in self.mcas]
@@ -109,7 +107,6 @@ class MultiXMAP(epics.Device):
             vals = [str(dxp.get(a, as_string=True)).replace(' ','_') for dxp in self.dxps]
             add("%s = %s" % (a, ' '.join(vals)))
         return buff
-
 
     def Write_CurrentConfig(self, filename=None):
         d = debugtime()
@@ -197,7 +194,6 @@ class MultiXMAP(epics.Device):
     def MCAMode(self, filename=None, filenumber=None, npulses=11):
         "put XMAP in MCA mapping mode"
         debug = debugtime()
-
         self.stop()
         self.PresetMode = 0
         self.setFileWriteMode(2)
@@ -259,26 +255,26 @@ class MultiXMAP(epics.Device):
 
         debug.add(' >> xmap MCAmode NC ArraySize: %i %i ' % ( f_buffsize, self.BufferSize_RBV))
         # debug.show()
-        time.sleep(2.0)
+        time.sleep(0.50)
         return
 
-    def filePut(self,attr,value, **kw):
-        return self.put("%s%s" % (self.filesaver, attr),value, **kw)
+    def filePut(self,attr, value, **kw):
+        return self.put("%s%s" % (self.filesaver, attr), value, **kw)
 
-    def fileGet(self,attr, **kw):
-        return self.get("%s%s" % (self.filesaver,attr),**kw)
+    def fileGet(self, attr, **kw):
+        return self.get("%s%s" % (self.filesaver, attr), **kw)
 
-    def setFilePath(self,pathname):
-        return self.filePut('FilePath',pathname)
+    def setFilePath(self, pathname):
+        return self.filePut('FilePath', pathname)
 
-    def setFileTemplate(self,fmt):
-        return self.filePut('FileTemplate',fmt)
+    def setFileTemplate(self, fmt):
+        return self.filePut('FileTemplate', fmt)
 
-    def setFileWriteMode(self,mode):
-        return self.filePut('FileWriteMode',mode)
+    def setFileWriteMode(self, mode):
+        return self.filePut('FileWriteMode', mode)
 
-    def setFileName(self,fname):
-        return self.filePut('FileName',fname)
+    def setFileName(self, fname):
+        return self.filePut('FileName', fname)
 
     def nextFileNumber(self):
         self.setFileNumber(1+self.fileGet('FileNumber'))
