@@ -185,7 +185,7 @@ class MultiXMAP(epics.Device):
         # wait until BufferSize is ready
         buffsize = -1
         t0 = time.time()
-        while time.time() - t0 < 3:
+        while time.time() - t0 < 5:
             self.CollectMode = 0
             time.sleep(0.05)
             if self.BufferSize_RBV < 16384:
@@ -209,11 +209,11 @@ class MultiXMAP(epics.Device):
         f_size = -1
         t0 = time.time()
         while (f_size < 16384) and time.time()-t0 < 10:
-            time.sleep(0.1)
+            time.sleep(0.02)
             for i in range(4):
                 self.NextPixel = 1
                 f_size = self.fileGet('ArraySize0_RBV')
-                time.sleep(0.1)
+                time.sleep(0.02)
                 if f_size > 16384:
                     break
         #
@@ -231,7 +231,7 @@ class MultiXMAP(epics.Device):
         t0 = time.time()
         debug.add(' >> xmap MCAmode: wait for buffsize')
         while time.time() - t0 < 10:
-            time.sleep(0.1)
+            time.sleep(0.05)
             if self.BufferSize_RBV > 16384:
                 break
         debug.add(' >> xmap MCAmode: BuffSize OK? %i' % self.BufferSize_RBV)
@@ -248,14 +248,13 @@ class MultiXMAP(epics.Device):
         f_buffsize = -1
         t0 = time.time()
         while time.time()- t0 < 5:
-            time.sleep(0.1)
+            time.sleep(0.02)
             f_buffsize = self.fileGet('ArraySize0_RBV')
             if self.BufferSize_RBV == f_buffsize:
                 break
 
         debug.add(' >> xmap MCAmode NC ArraySize: %i %i ' % ( f_buffsize, self.BufferSize_RBV))
         # debug.show()
-        time.sleep(0.50)
         return
 
     def filePut(self,attr, value, **kw):
