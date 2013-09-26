@@ -124,22 +124,22 @@ class FastMapGUI(wx.Frame):
 
         self.dimchoice = wx.Choice(pane, size=(120,30))
         self.m1choice = wx.Choice(pane,  size=(120,30))
-        self.m1units  = SimpleText(pane, "",minsize=(50,20))
+        self.m1units  = SimpleText(pane, "", minsize=(60,20))
         mopts = {'precision': 4, 'act_on_losefocus': True}
         topts = {'precision': 3, 'act_on_losefocus': True, 'minval': 0}
         self.m1start  = FloatCtrl(pane, value=0, **mopts)
         self.m1stop   = FloatCtrl(pane, value=1, **mopts)
         self.m1step   = FloatCtrl(pane, value=0.1, **mopts)
 
-        self.m1npts   = SimpleText(pane, "0",minsize=(55,20))
-        self.pixtime  = FloatCtrl(pane, value=0.100, minval=0., **topts)
+        self.m1npts   = SimpleText(pane, "0", minsize=(60,20))
+        self.pixtime  = FloatCtrl(pane, value=0.100, **topts)
 
         self.m2choice = wx.Choice(pane, size=(120,30),choices=[])
-        self.m2units  = SimpleText(pane, "",minsize=(50,20))
+        self.m2units  = SimpleText(pane, "", minsize=(60,20))
         self.m2start  = FloatCtrl(pane, value=0, **mopts)
         self.m2stop   = FloatCtrl(pane, value=1, **mopts)
         self.m2step   = FloatCtrl(pane, value=0.1, **mopts)
-        self.m2npts   = SimpleText(pane, "0",minsize=(60,20))
+        self.m2npts   = SimpleText(pane, "0", minsize=(60,20))
 
         self.maptime  = SimpleText(pane, "0")
         self.rowtime  = SimpleText(pane, "0")
@@ -455,7 +455,6 @@ class FastMapGUI(wx.Frame):
         mapper_pv = self.config['general']['mapdb']
         self.mapper = mapper(mapper_pv)
         self.mapper.add_callback('Start',self.onMapStart)
-        self.mapper.add_callback('Abort',self.onMapAbort)
         self.mapper.add_callback('message',self.onMapMessage)
         self.mapper.add_callback('info',self.onMapInfo)
         self.mapper.add_callback('nrow',self.onMapRow)
@@ -487,13 +486,7 @@ class FastMapGUI(wx.Frame):
 
     @DelayedEpicsCallback
     def onMapStart(self,pvname=None,value=None,**kw):
-        if value == 0: # stop of map
-            self.startbutton.Enable()
-            self.abortbutton.Disable()
-
-            self.usertitles.Enable()
-            self.filename.Enable()
-
+        if value == 0: # stop map
             fname = str(self.filename.GetValue())
             if os.path.exists(fname):
                 self.filename.SetValue(increment_filename(fname))
@@ -502,18 +495,7 @@ class FastMapGUI(wx.Frame):
 
             nfile = new_filename(os.path.abspath(fname))
             self.filename.SetValue(os.path.split(nfile)[1])
-        else: # start of map
-            self.startbutton.Disable()
-            self.abortbutton.Enable()
 
-    @DelayedEpicsCallback
-    def onMapAbort(self,pvname=None,value=None,**kw):
-        if value == 0:
-            self.abortbutton.Enable()
-            self.startbutton.Disable()
-        else:
-            self.abortbutton.Disable()
-            self.startbutton.Enable()
 
     def epics_CtrlVars(self,posname):
         posname = str(posname)
@@ -655,9 +637,6 @@ class FastMapGUI(wx.Frame):
         self.data_fname  = os.path.abspath(os.path.join(
             nativepath(self.mapper.basedir), self.mapper.filename))
 
-        self.usertitles.Disable()
-        self.filename.Disable()
-        self.abortbutton.Enable()
         self.start_time = time.time()
 
     @EpicsFunction
