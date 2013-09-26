@@ -65,13 +65,14 @@ step2 = 0.01
 [fast_positioners]
 1 = 13XRM:m1 | X
 2 = 13XRM:m2 | Y
+3 = 13XRM:m3 | Theta
 [slow_positioners]
 1 = 13XRM:m1  | X
 2 = 13XRM:m2  | Y
 3 = 13XRM:m3  | Theta
-4 = 13XRM:pm1 | Stage Z (focus)
-5 = 13XRM:pm2 | Stage X
-6 = 13XRM:m6  | Stage Y (vert)
+4 = 13XRM:pm2 | Stage X
+5 = 13XRM:m6  | Stage Y (vert)
+6 = 13XRM:pm1 | Stage Z (focus)
 """
 
 class FastMapConfig(object):
