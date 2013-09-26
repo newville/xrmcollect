@@ -28,9 +28,6 @@ conf_files = ('MapDefault.ini',
               '/Volumes/Data/xas_user/config/FastMap/Default.ini')
 
 
-##struck = 13IDC:str:
-##scaler = 13IDC:scaler2
-
 default_conf = """# FastMap configuration file (default)
 [general]
 mapdb = 13XRM:map:
