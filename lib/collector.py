@@ -25,6 +25,8 @@ USE_XSP3 = False
 USE_STRUCK = True
 USE_MONO_CONTROL = False
 
+SCAN_VERSION = '1.1'
+
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
     so that the start and stop points are on the trajectory
@@ -76,7 +78,7 @@ class TrajectoryScan(object):
             self.xmap.SpectraMode()
         if USE_XSP3:
             self.xsp3 = XSP3('mp49:XSP3:')
-            
+
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
             self.positioners[pname] = self.PV(pname)
@@ -111,7 +113,7 @@ class TrajectoryScan(object):
         if char_value is not None:
             os.chdir(os.path.abspath(nativepath(char_value)))
 
-    def setWorkingDirectory(self): 
+    def setWorkingDirectory(self):
 
         basedir = os.path.abspath(nativepath(self.mapper.basedir))
         try:
@@ -147,7 +149,7 @@ class TrajectoryScan(object):
 
         if USE_XMAP:
             self.xmap.setFilePath(winpath(self.workdir))
-            
+
         self.ROI_Written = False
         self.ENV_Written = False
         self.ROWS_Written = False
@@ -233,7 +235,7 @@ class TrajectoryScan(object):
     def run_scan(self, filename='TestMap',scantime=10, accel=1,
                  pos1='13XRM:m1',start1=0,stop1=1,step1=0.1, dimension=1,
                  pos2=None,start2=0,stop2=1,step2=0.1, **kws):
-        
+
         self.dtime.clear()
 
         if pos1 not in self.positioners:
@@ -267,13 +269,14 @@ class TrajectoryScan(object):
             npts2 = 1
 
         self.scan_t0 = time.time()
-        self.MasterFile.write('#SCAN started at %s\n' % time.ctime())
-        self.MasterFile.write('#SCAN file name = %s\n' % filename)
-        self.MasterFile.write('#SCAN dimension = %i\n' % dimension)
-        self.MasterFile.write('#SCAN nrows (expected) = %i\n' % npts2)
-        self.MasterFile.write('#SCAN time per row (expected) [s] = %.2f\n' % scantime)
-        self.MasterFile.write('#Y positioner = %s\n' %  str(pos2))
-        self.MasterFile.write('#Y start, stop, step = %f, %f, %f \n' %  (start2, stop2, step2))
+        self.MasterFile.write('#SCAN.version   = %s\n' % SCAN_VERSION)
+        self.MasterFile.write('#SCAN.starttime = %s\n' % time.ctime())
+        self.MasterFile.write('#SCAN.filename  = %s\n' % filename)
+        self.MasterFile.write('#SCAN.dimension = %i\n' % dimension)
+        self.MasterFile.write('#SCAN.nrows_expected = %i\n' % npts2)
+        self.MasterFile.write('#SCAN.time_per_row_expected = %.2f\n' % scantime)
+        self.MasterFile.write('#Y.positioner  = %s\n' %  str(pos2))
+        self.MasterFile.write('#Y.start_stop_step = %f, %f, %f \n' %  (start2, stop2, step2))
         self.MasterFile.write('#------------------------------------\n')
         self.MasterFile.write('# yposition  xmap_file  struck_file  xps_file    time\n')
 
@@ -285,12 +288,12 @@ class TrajectoryScan(object):
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
 
-        
+
         if not self.xps.DefineLineTrajectories(**linescan):
             print 'Failed to define trajectory!!'
             self.postscan()
             return
-        
+
         self.dtime.add('trajectory defined')
 
         self.PV(pos1).put(start1, wait=False)
@@ -400,7 +403,7 @@ class TrajectoryScan(object):
             time.sleep(0.1)
             self.xsp3.Acquire = 1
             time.sleep(0.05)
-            
+
         if USE_STRUCK:
             self.struck.start()
 
@@ -462,7 +465,7 @@ class TrajectoryScan(object):
                     if count > 10:
                         self.xsp3.Acquire = 0
                         self.xsp3.FileCaptureOff()
-                        
+
         self.dtime.add('ExecTraj: Scan Thread complete.')
         time.sleep(0.01)
 
@@ -522,7 +525,7 @@ class TrajectoryScan(object):
 
         if USE_STRUCK:
             wrote_struck = False
-            counter = 0 
+            counter = 0
             time.sleep(0.1)
             while not wrote_struck and counter < 10:
                 counter = counter + 1
@@ -539,7 +542,7 @@ class TrajectoryScan(object):
 
         # wait for saving of gathering file to complete
         saver_thread.join()
-        
+
         self.dtime.add('xps saved')
         rowinfo = self.make_rowinfo(xmap_fname, strk_fname, xps_fname, ypos=ypos)
         self.dtime.add('WriteRowData done: %i, %s' %(self.xps.nlines_out, rowinfo))
@@ -602,9 +605,9 @@ class TrajectoryScan(object):
         self.mapper.info  = 'Starting'
         fname = fix_filename(self.mapper.filename)
         self.mapconf.set_datafilename(fname)
-        
+
         self.MasterFile = open(os.path.join(self.workdir, 'Master.dat'), 'w')
-     
+
         self.mapconf.Save(os.path.join(self.workdir, 'Scan.ini'))
         self.data_mode   = 'w'
         self.escan_saver = EscanWriter(folder=self.workdir)
