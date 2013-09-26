@@ -104,8 +104,8 @@ Line = %f, %f
         self.ftpconn.cwd(config.traj_folder)
         self.ftpconn.storbinary('STOR %s' %fname, StringIO(data))
         self.ftp_disconnect()
-        # print 'Uploaded trajectory ', fname
-        # print data
+        print 'Uploaded trajectory ', fname
+        print data
 
     def DefineLineTrajectories(self, axis='x', start=0, stop=1, accel=None,
                                step=0.001, scantime=10.0, **kws):
