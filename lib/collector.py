@@ -159,20 +159,21 @@ class TrajectoryScan(object):
         self.ROWS_Written = False
         return subdir
 
-    def prescan(self,filename=None,filenumber=1,npulses=11,**kw):
+    def prescan(self, filename=None, filenumber=1, npulses=11, **kw):
         """ put all pieces (trajectory, struck, xmap) into
         the proper modes for trajectory scan"""
-        if USE_STRUCK:
-            self.struck.ExternalMode()
-            self.struck.put('PresetReal', 0.0)
-            self.struck.put('Prescale',   1.0)
-        self.dtime.add('prescan struck')
         if USE_XMAP:
             # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
             self.xmap.setFileTemplate('%s%s.%4.4d')
             self.xmap.setFileWriteMode(2)
             self.xmap.MCAMode(filename='xmap', npulses=npulses)
         self.dtime.add('prescan xmap')            
+        if USE_STRUCK:
+            self.struck.ExternalMode()
+            self.struck.put('PresetReal', 0.0)
+            self.struck.put('Prescale',   1.0)
+        self.dtime.add('prescan struck')
+
         if USE_XSP3:
             self.xsp3.ERASE = 1
             self.xsp3.NumImages = npulses
@@ -288,11 +289,10 @@ class TrajectoryScan(object):
                   dimension=dimension, npulses=npts1-1, scan_pt=1)
 
         axis1 = self.mapconf.get('fast_positioners', pos1).lower()
+
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
 
-        dir_offset += POSITIONER_OFFSETS[axis1[0]]
-        
         if not self.xps.DefineLineTrajectories(**linescan):
             print 'Failed to define trajectory!!'
             self.postscan()
@@ -300,11 +300,11 @@ class TrajectoryScan(object):
 
         self.dtime.add('trajectory defined')
 
-        # print ' -> starting position ', pos1, axis1, dir_offset, start1, stop1
-        if dir_offset % 2 == 0:
-            self.PV(pos1).put(start1, wait=False)
-        else:
-            self.PV(pos1).put(stop1, wait=False)
+        # move to starting position
+        dir_offset += POSITIONER_OFFSETS[axis1[0]]
+        p1_start = start1
+        if dir_offset % 2 != 0:    p1_start = stop1
+        self.PV(pos1).put(p1_start, wait=False)
         
         self.dtime.add( 'put #1 done')        
         if dimension > 1:
@@ -313,14 +313,18 @@ class TrajectoryScan(object):
 
         self.prescan(**kw)
         self.dtime.add( 'prescan done')        
-        # self.dtime.show(clear=True)
+        self.xmap.setFileNumber(1)
+        self.xmap.FileCaptureOn()
+
+        self.PV(pos1).put(p1_start, wait=True)
+        if dimension > 1:
+            self.PV(pos2).put(start2, wait=True)
 
         if USE_XSP3:
             self.xsp3.setFileNumber(1)
 
         irow = 0
         while irow < npts2:
-
             self.mapper.status = 1
             irow = irow + 1
             self.dtime.add('======== map row %i ' % irow)

@@ -54,8 +54,8 @@ class MultiXMAP(epics.Device):
     
     attrs = ['PresetReal','Dwell','Acquiring', 'EraseStart','StopAll',
              'PresetMode', 'PixelsPerBuffer_RBV', 'NextPixel',
-             'PixelsPerRun', 'Apply', 'CollectMode', 'SyncCount',
-             'BufferSize_RBV']
+             'PixelsPerRun', 'Apply', 'AutoApply', 'CollectMode',
+             'SyncCount', 'BufferSize_RBV']
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
@@ -165,7 +165,8 @@ class MultiXMAP(epics.Device):
             print 'XMAP needs to finish pixels ', cur, ' to ' , pprun
             for i in range(pprun-cur):
                 self.next_pixel()
-                time.sleep(0.01)
+                time.sleep(0.10)
+            self.FileCaptureOff()
         return pprun-cur
 
 
@@ -194,30 +195,30 @@ class MultiXMAP(epics.Device):
     def MCAMode(self, filename=None, filenumber=None, npulses=11):
         "put XMAP in MCA mapping mode"
         debug = debugtime()
+        self.AutoApply = 1
         self.stop()
         self.PresetMode = 0
         self.setFileWriteMode(2)
 
         self.CollectMode = 1
+        self.PixelsPerRun = npulses
 
         # First, make sure ArraySize0_RBV for the netcdf plugin
         # is the correct value
-        self.PixelsPerRun = 3
         self.FileCaptureOff()
         debug.add(' >> xmap MCAmode: Init')
         self.start()
         f_size = -1
         t0 = time.time()
         while (f_size < 16384) and time.time()-t0 < 10:
-            time.sleep(0.02)
-            for i in range(4):
+            for i in range(5):
+                time.sleep(0.1)
                 self.NextPixel = 1
                 f_size = self.fileGet('ArraySize0_RBV')
-                time.sleep(0.02)
                 if f_size > 16384:
                     break
         #
-        self.PixelsPerRun =  npulses
+        self.PixelsPerRun = npulses
         self.SyncCount =  1
         debug.add(' >> xmap MCAmode: File Plugin Mode Set: ')
 
@@ -227,32 +228,34 @@ class MultiXMAP(epics.Device):
 
         # wait until BufferSize is ready
         self.Apply = 1
-
+        self.CollectMode = 1
+        self.PixelsPerRun = npulses
+        time.sleep(0.25)
         t0 = time.time()
         debug.add(' >> xmap MCAmode: wait for buffsize')
         while time.time() - t0 < 10:
-            time.sleep(0.05)
+            time.sleep(0.25)
             if self.BufferSize_RBV > 16384:
                 break
         debug.add(' >> xmap MCAmode: BuffSize OK? %i' % self.BufferSize_RBV)
 
         # set expected number of buffers to put in a single file
         ppbuff = self.PixelsPerBuffer_RBV
-        time.sleep(0.01)
+        time.sleep(0.1)
         if ppbuff is None:
             ppbuff = 124
         self.setFileNumCapture(1 + int(npulses/(1.0*ppbuff)))
-
         debug.add(' >> xmap MCAmode: FileNumCapture: ')
 
         f_buffsize = -1
         t0 = time.time()
         while time.time()- t0 < 5:
-            time.sleep(0.02)
+            time.sleep(0.1)
             f_buffsize = self.fileGet('ArraySize0_RBV')
             if self.BufferSize_RBV == f_buffsize:
                 break
 
+        time.sleep(0.25)
         debug.add(' >> xmap MCAmode NC ArraySize: %i %i ' % ( f_buffsize, self.BufferSize_RBV))
         # debug.show()
         return
