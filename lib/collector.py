@@ -26,7 +26,9 @@ USE_STRUCK = True
 USE_MONO_CONTROL = False
 
 SCAN_VERSION = '1.1'
-ROW_MSG = 'Row %i complete, npts in XPS, SIS, XMAP = %i, %i, %i' 
+ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
+
+POSITIONER_OFFSETS = {'x':1, 'y':0, 't':0}
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -289,6 +291,8 @@ class TrajectoryScan(object):
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
 
+        dir_offset += POSITIONER_OFFSETS[axis1[0]]
+        
         if not self.xps.DefineLineTrajectories(**linescan):
             print 'Failed to define trajectory!!'
             self.postscan()
@@ -296,7 +300,12 @@ class TrajectoryScan(object):
 
         self.dtime.add('trajectory defined')
 
-        self.PV(pos1).put(start1, wait=False)
+        # print ' -> starting position ', pos1, axis1, dir_offset, start1, stop1
+        if dir_offset % 2 == 0:
+            self.PV(pos1).put(start1, wait=False)
+        else:
+            self.PV(pos1).put(stop1, wait=False)
+        
         self.dtime.add( 'put #1 done')        
         if dimension > 1:
             self.PV(pos2).put(start2, wait=False)
@@ -344,7 +353,6 @@ class TrajectoryScan(object):
             self.mapper.status = 2
             self.dtime.add('before exec traj')
             mt0 = time.time()
-            # print 'Exec Traj' 
             self.ExecuteTrajectory(name=traj, **kw)
             self.mapper.status = 3
             self.dtime.add('after exec traj')
@@ -397,13 +405,14 @@ class TrajectoryScan(object):
         t0 = time.time()
         if USE_XMAP:
             self.xmap.setFileNumber(scan_pt)
-            time.sleep(0.025)
             self.xmap.FileCaptureOn()
-            time.sleep(0.025)
-            self.xmap.start()
-            self.dtime.add('exec: xmap armed.')
-            time.sleep(0.025)
-            
+            time.sleep(0.1)
+            self.xmap.EraseStart = 1
+            while self.xmap.Acquiring != 1 and time.time()-t0 < 10.0:
+                self.xmap.EraseStart = 1
+                time.sleep(0.1)
+            self.dtime.add('exec: xmap armed? %s' % (repr(1==self.xmap.Acquiring)))
+
         if USE_XSP3:
             # complex Acquire On / FileCapture On:
             self.xsp3.setFileNumber(scan_pt)
@@ -420,13 +429,6 @@ class TrajectoryScan(object):
 
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
-
-        if USE_XMAP:
-            while self.xmap.Acquiring != 1:
-                time.sleep(0.01)
-                if time.time() - t0 > 10.0 :
-                    break
-            self.dtime.add('exec: xmap armed? %s ' % (repr(1==self.xmap.Acquiring)))
 
         # self.write('Ready to start trajectory')
         scan_thread = Thread(target=self.xps.RunLineTrajectory,
