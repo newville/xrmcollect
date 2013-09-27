@@ -125,7 +125,7 @@ Line = %f, %f
         fore_traj = {'scantime':scantime, 'axis':axis, 'accel': accel,
                      'ramptime': ramptime, 'pixeltime': pixeltime,
                      'xzero': 0.}
-        print 'Scan Times: ', scantime, pixeltime, (dist)/(step), accel
+        # print 'Scan Times: ', scantime, pixeltime, (dist)/(step), accel
         this = {'start': start, 'stop': stop, 'step': step,
                 'velo': velo, 'ramp': ramp, 'dist': dist}
         
