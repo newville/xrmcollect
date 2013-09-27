@@ -36,7 +36,7 @@ class config:
     gather_titles = "# XPS Gathering Data\n#--------------"
     # gather_outputs =  ('CurrentPosition', 'FollowingError', 
     #                    'SetpointPosition', 'CurrentVelocity')
-    gather_outputs =  ('CurrentPosition', )
+    gather_outputs =  ('CurrentPosition', 'SetpointPosition')
 class XPSTrajectory(object):
     """XPS trajectory....
     """
@@ -104,8 +104,8 @@ Line = %f, %f
         self.ftpconn.cwd(config.traj_folder)
         self.ftpconn.storbinary('STOR %s' %fname, StringIO(data))
         self.ftp_disconnect()
-        # print 'Uploaded trajectory ', fname
-        # print data
+        #print 'Uploaded trajectory ', fname
+        #print data
 
     def DefineLineTrajectories(self, axis='x', start=0, stop=1, accel=None,
                                step=0.001, scantime=10.0, **kws):
@@ -121,7 +121,7 @@ Line = %f, %f
         pixeltime = scantime * step / abs(dist)
         velo      = dist / scantime
         ramptime = abs(velo / accel)
-        ramp     = 1.5 * velo * ramptime
+        ramp     = 0.5 * velo * ramptime
         fore_traj = {'scantime':scantime, 'axis':axis, 'accel': accel,
                      'ramptime': ramptime, 'pixeltime': pixeltime,
                      'xzero': 0.}
