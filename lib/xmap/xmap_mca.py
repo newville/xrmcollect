@@ -64,7 +64,7 @@ class MultiXMAP(epics.Device):
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
     _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver',
-                'pathattrs', '_nonpvs', 'nmcas', 'dxps', 'mcas')
+                'pathattrs', '_nonpvs', 'nmca', 'dxps', 'mcas')
     
     def __init__(self, prefix, filesaver='netCDF1:',nmca=4):
         self.filesaver = filesaver
