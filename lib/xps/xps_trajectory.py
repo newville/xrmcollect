@@ -312,11 +312,8 @@ Line = %f, %f
         # db.add('  data fixed')
         f = open(fname, 'w')
         f.write(self.gather_titles)
-        # db.add('  file open')
         f.write(obuff)
-        # db.add('  file write')
         f.close()
-        # db.add('  file closed')
         nlines = len(obuff.split('\n')) - 1
         if verbose:
             print 'Wrote %i lines, %i bytes to %s' % (nlines, len(buff), fname)
