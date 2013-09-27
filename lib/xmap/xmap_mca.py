@@ -151,23 +151,23 @@ class MultiXMAP(epics.Device):
         self.NextPixel = 1
         return self.NextPixel
 
-    def finish_pixels(self):
+    def finish_pixels(self, timeout=2):
         "Advance to Next Pixel until CurrentPixel == PixelsPerRun"
         pprun = self.PixelsPerRun
         cur   = self.dxps[0].get('CurrentPixel')
-        counter = 0
-        while cur < pprun and counter < 20:
+        t0 = time.time()
+        while cur < pprun and time.time()-t0 < timeout:
             time.sleep(0.1)
-            counter +=1
             pprun = self.PixelsPerRun
             cur   = self.dxps[0].get('CurrentPixel')
-        if cur < pprun:
-            print 'XMAP needs to finish pixels ', cur, ' to ' , pprun
+        ok = cur >= pprun
+        if not ok:
+            print 'XMAP needs to finish pixels ', cur, ' / ' , pprun
             for i in range(pprun-cur):
                 self.next_pixel()
                 time.sleep(0.10)
             self.FileCaptureOff()
-        return pprun-cur
+        return ok, pprun-cur
 
 
     def readmca(self,n=1):

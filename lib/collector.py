@@ -27,6 +27,7 @@ USE_MONO_CONTROL = False
 
 SCAN_VERSION = '1.1'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
+ROW_MSG = '(%i, %i/%i/%i)' 
 
 POSITIONER_OFFSETS = {'x':1, 'y':0, 't':0}
 
@@ -219,12 +220,17 @@ class TrajectoryScan(object):
             t0 = time.time()
             time.sleep(0.05)
             if not self.xmap.FileWriteComplete():
-                self.xmap.finish_pixels()
+                xmap_ok, npix = self.xmap.finish_pixels()
+                self.rowdata_ok = xmap_ok
+                if not xmap_ok:
+                    print 'XMAP too few pixels'
             while not self.xmap.FileWriteComplete():
                 time.sleep(0.1)
                 if time.time()-t0 > 5:
                     self.mapper.message = 'XMAP File Writing Not Complete!'
                     # self.MasterFile.write('#WARN xmap write failed: row %i\n' % (irow-1))
+                    self.rowdata_ok = False
+                    print 'XMAP could not complete file writing'
                     break
             xmap_fname = nativepath(self.xmap.getLastFileName())[:-1]
             folder,xmap_fname = os.path.split(xmap_fname)
@@ -326,6 +332,7 @@ class TrajectoryScan(object):
         irow = 0
         while irow < npts2:
             self.mapper.status = 1
+            self.rowdata_ok = True
             irow = irow + 1
             self.dtime.add('======== map row %i ' % irow)
             # print 'ROW ', irow, start1, stop1, step1, dir_offset
@@ -377,11 +384,11 @@ class TrajectoryScan(object):
             nxps, nxmap, rowinfo = self.WriteRowData(scan_pt=irow,
                                                      ypos=ypos,
                                                      npts=npts1)
-            if irow % 10 == 0:
+            if irow % 5 == 0:
                 self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xmap saved')
-            if USE_XMAP and irow > nxmap:
-                self.write('Missing XMAP File!')
+            if not self.rowdata_ok:
+                self.write('Bad data for row: redoing this row')
                 irow = irow - 1
             else:
                 self.MasterFile.write(rowinfo)
@@ -531,14 +538,10 @@ class TrajectoryScan(object):
                               args=(xps_fname,))
         saver_thread.start()
         # self.xps.SaveResults(xps_fname)
-
         nxmap = 0
         if USE_XMAP:
             xmap_fname = nativepath(self.xmap.getFileNameByIndex(scan_pt))[:-1]
             nxmap = self.Wait_XMAPWrite(irow=scan_pt)
-
-            # if USE_XSP3:
-            # time.sleep(0.25)
 
         if USE_STRUCK:
             wrote_struck = False
@@ -553,6 +556,7 @@ class TrajectoryScan(object):
                     print 'trouble saving struck data.. will retry'
                 time.sleep(0.1 + 0.2*counter)
             if not wrote_struck:
+                self.rowdata_ok = False
                 print "Could not SAVE STRUCK DATA!!!!!"
 
             self.dtime.add('struck saved (%i tries)' % counter)
@@ -567,7 +571,8 @@ class TrajectoryScan(object):
         n_sis = self.struck.CurrentChannel
         n_xrf = self.xmap.PixelsPerRun
 
-        self.write(ROW_MSG % (scan_pt, n_xps, n_sis, n_xrf))
+        sys.stdout.write(ROW_MSG % (scan_pt, n_xps, n_sis, n_xrf))
+        sys.stdout.flush()
         self.dtime.add('WriteRowData done: %i, %s' %(self.xps.nlines_out, rowinfo))
         return (self.xps.nlines_out, nxmap, rowinfo)
 
