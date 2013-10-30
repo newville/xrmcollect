@@ -643,10 +643,13 @@ class FastMapGUI(wx.Frame):
     def onAbortScan(self,evt=None):
         self.mapper.AbortScan()
 
-def run():
+def run(iconfile=None):
     motorpvs = Connect_Motors()
     app  = wx.App()
     frame= FastMapGUI(motorpvs=motorpvs)
+    if iconfile is not None:
+        frame.SetIcon( wx.Icon(iconfile, wx.BITMAP_TYPE_ICO))
+            
     frame.Show()
     app.MainLoop()
 

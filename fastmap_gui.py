@@ -2,4 +2,5 @@
 
 import wx
 from epicscollect import fastmap_gui
-fastmap_gui.run()
+iconfile='C:/Python27/bin/fastmap.ico'
+fastmap_gui.run(iconfile=iconfile)
