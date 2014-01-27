@@ -218,19 +218,21 @@ class TrajectoryScan(object):
         if USE_XMAP:
             # wait for previous netcdf file to be written
             t0 = time.time()
-            time.sleep(0.05)
+            time.sleep(0.1)
             if not self.xmap.FileWriteComplete():
                 xmap_ok, npix = self.xmap.finish_pixels()
                 self.rowdata_ok = xmap_ok
                 if not xmap_ok:
-                    print 'XMAP too few pixels'
+                    self.write('Bad data -- XMAP too few pixels')
+                    
             while not self.xmap.FileWriteComplete():
-                time.sleep(0.1)
-                if time.time()-t0 > 5:
+                time.sleep(0.25)
+                if time.time()-t0 > 5.0:
                     self.mapper.message = 'XMAP File Writing Not Complete!'
                     # self.MasterFile.write('#WARN xmap write failed: row %i\n' % (irow-1))
                     self.rowdata_ok = False
                     print 'XMAP could not complete file writing'
+                    self.write('Bad data -- XMAP could not complete file writing')
                     break
             xmap_fname = nativepath(self.xmap.getLastFileName())[:-1]
             folder,xmap_fname = os.path.split(xmap_fname)
@@ -557,8 +559,8 @@ class TrajectoryScan(object):
                 time.sleep(0.1 + 0.2*counter)
             if not wrote_struck:
                 self.rowdata_ok = False
-                print "Could not SAVE STRUCK DATA!!!!!"
-
+                self.write('Bad data -- Could not SAVE STRUCK DATA!')
+                
             self.dtime.add('struck saved (%i tries)' % counter)
 
         # wait for saving of gathering file to complete
