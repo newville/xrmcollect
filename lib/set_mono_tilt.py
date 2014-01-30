@@ -40,6 +40,7 @@ def find_peak_intensity(ctrl_pv, read_pv, delay_time=0.10,
 def set_mono_tilt(use_bpm=False, do_roll=True):
     # adjust IDE mono tilt and roll DAC to maximize mono pitch
     print 'SET MONO TILT  using bpm = ', use_bpm, ' doing roll = ', do_roll
+    xt0 = time.time()
     tilt_pv = '13IDA:DAC1_7.VAL'
     roll_pv = '13IDA:DAC1_8.VAL'
     i0_pv   = '13IDE:IP330_1.VAL'
@@ -51,7 +52,7 @@ def set_mono_tilt(use_bpm=False, do_roll=True):
 
     i0_minval = 0.1   # expected smallest I0 Voltage
     dac_delta = 0.025 # min step in DAC Voltage
-    npoints   = 100   # max number of DAC steps +/- current position
+    npoints   = 40    # max number of DAC steps +/- current position
 
     # find best tilt value
     tilt_best = tilt_orig = caget(tilt_pv) 
@@ -60,7 +61,7 @@ def set_mono_tilt(use_bpm=False, do_roll=True):
     for i in range(2*npoints):
         tval =  tilt_orig + (i-npoints) * dac_delta
         caput(tilt_pv, tval)
-        time.sleep(0.1)
+        time.sleep(0.10)
         i0 = caget(i0_pv)
         if i0 > i0_best:
             i0_best, tilt_best = i0, tval
@@ -68,29 +69,29 @@ def set_mono_tilt(use_bpm=False, do_roll=True):
     if i0_best < i0_minval:
         tilt_best = tilt_orig
     caput(tilt_pv, tilt_best)
-    time.sleep(2.0)
-    caput('13IDA:QE2:ComputePosOffset12.PROC', 1)
-    caput('13IDA:efast_pitch_pid.FBON', 0)
-    
+
     if not do_roll:
         return
-    print 'doing roll..'
     roll_best = roll_orig = caget(roll_pv)
     i0_best = caget(i0_pv)
     for i in range(2*npoints):
         tval =  roll_orig + (i-npoints) * dac_delta
         caput(roll_pv, tval)
-        time.sleep(0.1)
+        time.sleep(0.10)
         i0  = caget(i0_pv)
         if i0 > i0_best:
             i0_best, roll_best = i0, tval
+
     if i0_best < i0_minval:
         roll_best = roll_orig
     caput(roll_pv, roll_best)
+
     time.sleep(2.0)
+    caput('13IDA:QE2:ComputePosOffset12.PROC', 1)
     caput('13IDA:QE2:ComputePosOffset34.PROC', 1)
     caput('13IDA:efast_roll_pid.FBON', 0)
-
+    caput('13IDA:efast_pitch_pid.FBON', 0)
+    # print 'Set Mono Tilt Time : %.3f' % (time.time()-xt0)
 
 if __name__ == '__main__':
-    set_mono_tilt()
+    set_mono_tilt(do_roll=True)
