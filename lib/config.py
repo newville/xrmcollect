@@ -7,6 +7,7 @@ import os
 import time
 
 conf_sects = {'general': {},
+              'beam_ok': {},
               'xps':{'bools':('use_ftp',)},
               'fast_positioners': {'ordered':True},
               'slow_positioners': {'ordered':True},
@@ -15,10 +16,11 @@ conf_sects = {'general': {},
                                  'start2','stop2', 'step2')}}
 
 __c = (('general', ('mapdb', 'struck', 'scaler', 'xmap', 'mono',
-                   'fileplugin', 'basedir', 'scandir', 'envfile')),
+                    'fileplugin', 'basedir', 'scandir', 'envfile')),
        ('xps',  ('host', 'user', 'passwd', 'group', 'positioners')),
        ('scan', ('filename', 'dimension', 'comments', 'pos1', 'start1', 'stop1',
                  'step1', 'time1', 'pos2', 'start2', 'stop2', 'step2')),
+       ('beam_ok', ('shutter_open', 'shutter_status', 'flux_val_pv', 'flux_min_pv')),
        ('fast_positioners', None),
        ('slow_positioners', None))
 
@@ -39,6 +41,11 @@ fileplugin = netCDF1:
 basedir = //Volumess/Data/xas_user/2013.2/_Setup
 scandir = Scan00001
 envfile = /Volumes/Data/xas_user/config/IDE_SDD1_ENV.DAT
+[beam_ok]
+shutter_open   = 13IDA:OpenFEShutter.PROC & 13IDA:OpenEShutter.PROC
+shutter_status = 13IDA:eps_mbbi25   & 13IDA:eps_mbbi27
+flux_val_pv = 13XRM:ION:FluxOut
+flux_min_pv = 13XRM:ION:FluxLowLimit
 [xps]
 type = NewportXPS
 mode = XYGroup

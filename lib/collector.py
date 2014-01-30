@@ -23,7 +23,7 @@ from set_mono_tilt import set_mono_tilt
 USE_XMAP = True
 USE_XSP3 = False
 USE_STRUCK = True
-USE_MONO_CONTROL = False
+USE_MONO_CONTROL = True
 
 SCAN_VERSION = '1.1'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
@@ -90,6 +90,14 @@ class TrajectoryScan(object):
         self.mapper.add_callback('Start', self.onStart)
         self.mapper.add_callback('Abort', self.onAbort)
         self.mapper.add_callback('basedir', self.onDirectoryChange)
+        self.prepare_beam_ok()
+
+    def prepare_beam_ok(self):
+        conf = self.mapconf.get('beam_ok')
+        self.flux_val_pv = self.PV(conf['flux_val_pv'])
+        self.flux_min_pv = self.PV(conf['flux_min_pv'])
+        self.shutter_status = [self.PV(x.strip()) for x in conf['shutter_status'].split('&')]
+        self.shutter_open = [self.PV(x.strip()) for x in conf['shutter_open'].split('&')]
 
     def write(self, msg, flush=True):
         sys.stdout.write("%s\n"% msg)
@@ -374,12 +382,6 @@ class TrajectoryScan(object):
                 self.PV(pos2).put(start2 + irow*step2, wait=False)
             self.PV(pos1).put(p1_next, wait=False)
 
-            if USE_MONO_CONTROL:
-                try:
-                    set_mono_tilt(timeout=7200)
-                except:
-                    pass
-
             # note:
             #  First WriteRowData will write data from XPS and struck,
             #  Then we wait for the XMAP to finish writing its data.
@@ -389,6 +391,8 @@ class TrajectoryScan(object):
             if irow % 5 == 0:
                 self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xmap saved')
+            self.check_beam_ok(timeout=600)
+
             if not self.rowdata_ok:
                 self.write('Bad data for row: redoing this row')
                 irow = irow - 1
@@ -411,6 +415,33 @@ class TrajectoryScan(object):
         self.write('done.')
         self.dtime.add('map after postscan')
 
+
+    def check_beam_ok(self, timeout=120):
+        conf = self.mapconf.get('beam_ok')
+        flux_min = float(self.flux_min_pv.get())
+        flux_val = float(self.flux_val_pv.get())
+        if flux_val > flux_min:
+            return True
+        ##
+        ## if we get here, we'll want to redo the previous row
+        self.rowdata_ok = False
+        print 'Flux low... checking shutters'
+        def shutters_open():
+            return all([x.get()==1 for x in self.shutter_status])
+                
+        shutter_ok = shutters_open()
+        t0 = time.time()
+        while not shutter_ok:
+            for sh_open in self.shutter_open:
+                sh_open.put(1)
+                time.sleep(0.50)
+            shutter_ok = shutters_open()
+            if self.state == 'abort' or time.time() > t0 + timeout:
+                return False
+
+        if shutter_ok and flux_val < flux_min and USE_MONO_CONTROL:
+            set_mono_tilt()
+            
     def ExecuteTrajectory(self, name='line', filename='TestMap',
                           scan_pt=1, scantime=10, dimension=1,
                           npulses=11, wait=False, **kw):
@@ -629,8 +660,7 @@ class TrajectoryScan(object):
         self.dtime.clear()
         self.setWorkingDirectory()
         self.dtime.add(' set working folder')
-        if USE_MONO_CONTROL:
-            set_mono_tilt(force=True)
+        self.check_beam_ok()
 
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
         self.dtime.add(' read config')        
