@@ -391,7 +391,7 @@ class TrajectoryScan(object):
             if irow % 5 == 0:
                 self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xmap saved')
-            self.check_beam_ok(timeout=600)
+            self.check_beam_ok()
 
             if not self.rowdata_ok:
                 self.write('Bad data for row: redoing this row')
@@ -421,7 +421,7 @@ class TrajectoryScan(object):
         flux_min = float(self.flux_min_pv.get())
         flux_val = float(self.flux_val_pv.get())
         if flux_val > flux_min:
-            return True
+            return
         ##
         ## if we get here, we'll want to redo the previous row
         self.rowdata_ok = False
@@ -437,11 +437,17 @@ class TrajectoryScan(object):
                 time.sleep(0.50)
             shutter_ok = shutters_open()
             if self.state == 'abort' or time.time() > t0 + timeout:
-                return False
+                return
 
-        if shutter_ok and flux_val < flux_min and USE_MONO_CONTROL:
+        # shutters are open.... check flux again,
+        # adjust mono if needed.
+        time.sleep(2.0)
+        flux_min = float(self.flux_min_pv.get())
+        flux_val = float(self.flux_val_pv.get())
+        if flux_val < flux_min and USE_MONO_CONTROL:
             set_mono_tilt()
-            
+        return 
+        
     def ExecuteTrajectory(self, name='line', filename='TestMap',
                           scan_pt=1, scantime=10, dimension=1,
                           npulses=11, wait=False, **kw):
