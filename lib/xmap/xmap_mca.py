@@ -230,7 +230,7 @@ class MultiXMAP(epics.Device):
         self.Apply = 1
         self.CollectMode = 1
         self.PixelsPerRun = npulses
-        time.sleep(0.25)
+        time.sleep(0.50)
         t0 = time.time()
         debug.add(' >> xmap MCAmode: wait for buffsize')
         while time.time() - t0 < 10:
@@ -241,7 +241,7 @@ class MultiXMAP(epics.Device):
 
         # set expected number of buffers to put in a single file
         ppbuff = self.PixelsPerBuffer_RBV
-        time.sleep(0.1)
+        time.sleep(0.25)
         if ppbuff is None:
             ppbuff = 124
         self.setFileNumCapture(1 + int(npulses/(1.0*ppbuff)))
@@ -255,7 +255,7 @@ class MultiXMAP(epics.Device):
             if self.BufferSize_RBV == f_buffsize:
                 break
 
-        time.sleep(0.25)
+        time.sleep(0.5)
         debug.add(' >> xmap MCAmode NC ArraySize: %i %i ' % ( f_buffsize, self.BufferSize_RBV))
         # debug.show()
         return
