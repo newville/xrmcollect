@@ -156,6 +156,12 @@ class TrajectoryScan(object):
         except OSError:
             pass
 
+        # write h5 file stub (with name of folder) for viewing program
+        h5fname = os.path.abspath(os.path.join(basedir, "%s.h5" % fname))
+        fout  = open(h5fname, 'w')
+        fout.write("%s\n"% subdir)
+        fout.close()
+
         self.mapper.workdir = subdir
         self.workdir = os.path.abspath(os.path.join(basedir,subdir))
         self.write('=Scan folder: %s' % self.workdir)
