@@ -9,6 +9,9 @@ import time
 conf_sects = {'general': {},
               'beam_ok': {},
               'xps':{'bools':('use_ftp',)},
+              'xrd_ad': {},
+              'xrf': {},
+              'image_ad': {},
               'fast_positioners': {'ordered':True},
               'slow_positioners': {'ordered':True},
               'scan': {'ints': ('dimension',),
@@ -21,6 +24,9 @@ __c = (('general', ('mapdb', 'struck', 'scaler', 'xmap', 'mono',
        ('scan', ('filename', 'dimension', 'comments', 'pos1', 'start1', 'stop1',
                  'step1', 'time1', 'pos2', 'start2', 'stop2', 'step2')),
        ('beam_ok', ('shutter_open', 'shutter_status', 'flux_val_pv', 'flux_min_pv')),
+       ('xrd_ad',   ('use', 'type', 'prefix', 'plugin')),
+       ('image_ad', ('use', 'type', 'prefix', 'plugin')),
+       ('xrf',      ('use', 'type', 'prefix', 'plugin')),
        ('fast_positioners', None),
        ('slow_positioners', None))
 
@@ -46,6 +52,21 @@ shutter_open   = 13IDA:OpenFEShutter.PROC & 13IDA:OpenEShutter.PROC
 shutter_status = 13IDA:eps_mbbi25   & 13IDA:eps_mbbi27
 flux_val_pv = 13XRM:ION:FluxOut
 flux_min_pv = 13XRM:ION:FluxLowLimit
+[xrf]
+use = True
+type = xmap
+prefix = 13SDD1:
+fileplugin = netCDF1:
+[xrd_ad]
+use = False
+type = PEDET1
+prefix = 13PE1:
+fileplugin = netCDF1:
+[image_ad]
+use = False
+type = PS1
+prefix = 13IDEPS1:
+fileplugin = TIFF1:
 [xps]
 type = NewportXPS
 mode = XYGroup
