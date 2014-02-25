@@ -2,6 +2,7 @@
 
 import os
 import wx
+import wx.lib.agw.flatnotebook as flat_nb
 import time
 import shutil
 
@@ -16,7 +17,9 @@ from mapper import mapper
 from .io.file_utils import new_filename, increment_filename, nativepath
 
 # should look this up from Struck!
-MAX_POINTS = 2048
+MAX_POINTS = 5000
+
+FNB_STYLE = flat_nb.FNB_NO_X_BUTTON|flat_nb.FNB_SMART_TABS|flat_nb.FNB_NO_NAV_BUTTONS
 
 def Connect_Motors():
     conf = FastMapConfig().config
@@ -34,17 +37,17 @@ def addtoMenu(parent,menu,label,text,action=None):
     if callable(action): wx.EVT_MENU(parent, ID, action)
 
 class SetupFrame(wx.Frame):
-    def __init__(self, conf=None, **kwds):
-        self.config = conf
+    def __init__(self, config=None, **kwds):
+        self.config = config
 
         kwds["style"] = wx.DEFAULT_FRAME_STYLE
         wx.Frame.__init__(self, None, -1, **kwds)
 
-        self.Font10=wx.Font(10, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
+        self.Font11=wx.Font(11, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
 
         self.SetTitle("Setup For Fast Maps")
         self.SetSize((850, 550))
-        self.SetFont(self.Font10)
+        self.SetFont(self.Font11)
 
         fmenu = wx.Menu()
         addtoMenu(self,fmenu, "&Quit", "Quit Setup",  self.onClose)
@@ -55,14 +58,75 @@ class SetupFrame(wx.Frame):
         self.buildPanel()
 
     def buildPanel(self):
-        panel = wx.Panel(self, -1)
+        self.SetMinSize((740, 450))
+
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(panel, 1, 0,0)
+        
+        sizer.Add(SimpleText(self, 'Fast Map Configuration',
+                             style=wx.LEFT|wx.CENTER), 0)
+
+        self.nb = flat_nb.FlatNotebook(self, wx.ID_ANY, agwStyle=FNB_STYLE)
+        self.nb.SetBackgroundColour('#FAFCFA')
+        self.SetBackgroundColour('#FAFCFA')
+        self.subpanels = {}
+        self.confwids = {}
+        for sect, title in (('general',  'Main Settings'),
+                            ('beam_ok',  'Beam Monitor'),
+                            ('xrd_ad',   'X-ray Diffraction'),
+                            ('image_ad', 'Optical Camera'),
+                            ('xps',      'Newport XPS Settings'),
+                            ('slow_positioners', 'Slow Positioners')):
+            subpanel = wx.Panel(self)
+            psizer = wx.GridBagSizer(10, 4)
+            self.confwids[sect] = {}
+            conf = self.config[sect]
+            irow = 0
+            keys = sorted(conf.keys())
+            
+            for word in keys:
+                value = conf[word]
+                psizer.Add(SimpleText(subpanel, word, style=wx.LEFT|wx.CENTER),
+                          (irow, 0), (1, 1), 3)
+                ctrl = wx.TextCtrl(subpanel, -1, value, size=(300, -1))
+                if value in ('False', 'True'):
+                    ctrl = wx.Choice(subpanel, -1, choices=('Yes', 'No'))
+
+                self.confwids[sect][word] = ctrl
+                psizer.Add(ctrl, (irow, 1), (1, 2), 3)
+                irow += 1
+                
+            psizer.Add(wx.StaticLine(subpanel, size=(200, 2),
+                                     style=wx.LI_HORIZONTAL), (irow, 0), (1, 3))
+            
+            self.subpanels[sect] = subpanel
+            self.nb.AddPage(subpanel, title)
+
+
+            psizer.SetSizeHints(subpanel)
+            subpanel.SetSizer(psizer)
+            psizer.Fit(subpanel)
+            
+        self.nb.SetSelection(0)
+
+        sizer.Add(wx.StaticLine(self, size=(475, 3),
+                                style=wx.LI_HORIZONTAL), 0, wx.EXPAND)
+        sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
+        sizer.Add(wx.StaticLine(self, size=(475, 3),
+                                style=wx.LI_HORIZONTAL), 0, wx.EXPAND)
+            
+        sizer.SetSizeHints(self)
         self.SetSizer(sizer)
-        sizer.Fit(self)
-        self.Layout()
+        sizer.Fit(self)        
         self.Show()
         self.Raise()
+
+    def onDone(self, event=None):
+        for table in self.tables:
+            del_ids = table.onOK()
+            for scanid in del_ids:
+                self.scandb.del_scandef(scanid=scanid)
+        self.scandb.commit()
+        self.Destroy()
 
     def onClose(self,evt=None):
         self.Destroy()
@@ -284,8 +348,8 @@ class FastMapGUI(wx.Frame):
 
         # options
         omenu = wx.Menu()
-        addtoMenu(self,omenu, "&Options",
-                  "Setup Motors, Detectors, other Options",
+        addtoMenu(self,omenu, "&Configure",
+                  "Setup Detectors, Motors, other Options",
                   self.onSetup)
         # help
         hmenu = wx.Menu()
@@ -293,7 +357,7 @@ class FastMapGUI(wx.Frame):
                   "More information about this program",  self.onAbout)
 
         self.menubar.Append(fmenu, "&File")
-        self.menubar.Append(omenu, "Edit")
+        self.menubar.Append(omenu, "Options")
         self.menubar.Append(hmenu, "&Help")
         self.SetMenuBar(self.menubar)
 
@@ -307,7 +371,7 @@ class FastMapGUI(wx.Frame):
         self.Destroy()
 
     def onSetup(self,evt=None):
-        SetupFrame(self.config)
+        SetupFrame(config=self.config)
 
     @EpicsFunction
     def onFolderSelect(self,evt):
