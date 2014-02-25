@@ -199,7 +199,8 @@ class MultiXMAP(epics.Device):
         self.stop()
         self.PresetMode = 0
         self.setFileWriteMode(2)
-
+        if npulses < 2:
+            npulses = 2
         self.CollectMode = 1
         self.PixelsPerRun = npulses
 
@@ -244,9 +245,8 @@ class MultiXMAP(epics.Device):
         time.sleep(0.25)
         if ppbuff is None:
             ppbuff = 124
-        self.setFileNumCapture(1 + int(npulses/(1.0*ppbuff)))
+        self.setFileNumCapture(1 + (npulses-1)/ppbuff)
         debug.add(' >> xmap MCAmode: FileNumCapture: ')
-
         f_buffsize = -1
         t0 = time.time()
         while time.time()- t0 < 5:

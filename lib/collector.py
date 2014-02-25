@@ -241,11 +241,11 @@ class TrajectoryScan(object):
                     
             while not self.xmap.FileWriteComplete():
                 time.sleep(0.25)
-                if time.time()-t0 > 5.0:
+                if time.time()-t0 > 3.0:
                     self.mapper.message = 'XMAP File Writing Not Complete!'
-                    # self.MasterFile.write('#WARN xmap write failed: row %i\n' % (irow-1))
                     self.rowdata_ok = False
-                    print 'XMAP could not complete file writing'
+                    self.xmap.FileCaptureOff()
+                    print 'could not complete file writing!'
                     self.write('Bad data -- XMAP could not complete file writing')
                     break
             xmap_fname = nativepath(self.xmap.getLastFileName())[:-1]
