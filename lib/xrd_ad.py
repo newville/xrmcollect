@@ -4,8 +4,10 @@ import time
 import epics
 
 class PerkinElmer_AD(epics.Device):
-    camattrs = ('PEAcquireOffset', 'ImageMode', 'TriggerMode',
-                'Acquire',  'AcquireTime', 'NumImages')
+    camattrs = ('PEAcquireOffset', 'PENumOffsetFrames', 
+                'ImageMode', 'TriggerMode',
+                'Acquire',  'AcquireTime', 'Model_RBV', 
+                'NumImages', 'ShutterControl')
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
@@ -21,36 +23,90 @@ class PerkinElmer_AD(epics.Device):
         epics.Device.__init__(self, camprefix, delim='',
                               mutable=False,
                               attrs=self.camattrs)
-
+        self.filesaver = "%s%s" % (prefix, filesaver)
         for p in self.pathattrs:
             pvname = '%s%s%s' % (prefix, filesaver, p)
-            self.add_pv(pvname, attr=p)
+            self.add_pv(pvname, attr='File_'+p)
+        
 
-    def AcquireOffset(self, timeout=15):
-        print 'NEED TO CLOSE SHUTTER!! '
+    def AcquireOffset(self, timeout=10, open_shutter=True):
+        """Acquire Offset -- a slightly complex process
+
+        Arguments
+        ---------
+        timeout :       float (default 10)  time in seconds to wait
+        open_shutter :  bool (default True)  open shutters on exit
+ 
+        1. close shutter
+        2. set image mode to single /internal trigger
+        3. acquire offset correction
+        4. reset image mode and trigger mode
+        5. optionally (by default) open shutter
+        """
+        self.ShutterControl = 0
         image_mode_save = self.ImageMode 
         trigger_mode_save = self.TriggerMode 
         self.ImageMode = 0
         self.TriggerMode = 0
+        offtime = self.PENumOffsetFrames * self.AcquireTime
         time.sleep(0.25)
-        self.PEAcuireOffset = 1
+        self.PEAcquireOffset = 1
         t0 = time.time()
-        while self.PEAcuireOffset > 0 and time.time()-t0 < timeout:
+        time.sleep(offtime/3.0)
+        while self.PEAcquireOffset > 0 and time.time()-t0 < timeout+offtime:
             time.sleep(0.1)
 
         self.ImageMode = image_mode_save
         self.TriggerMode = trigger_mode_save
+        if open_shutter:
+            self.ShutterControl = 1
 
-    def SetExposureTime(self, t):
+    def SetExposureTime(self, t, open_shutter=True):
+        "set exposure time, re-acquire offset correction"
         self.AcquireTime = t
-        self.AcquireOffset()
-        
+        self.AcquireOffset(open_shutter=open_shutter)
+    
+    def SetMultiFrames(self, n, trigger='external'):
+        """set number of multiple frames for streaming
+        this sets number of images for camera in Multiple Image Mode
+        AND sets the number of images to capture with file plugin
+        """
+        self.ImageMode = 1  #  multiple images
 
-    def filePut(self,attr, value, **kw):
-        return self.put("%s%s" % (self.filesaver, attr), value, **kw)
+        # trigger mode
+        trigger_mode = 0 # internal
+        if trigger.lower().startswith('ext'):
+            trigger_mode = 1 # external
+        elif trigger.lower().startswith('free'):
+            trigger_mode = 2 # free running
+        elif trigger.lower().startswith('soft'):
+            trigger_mode = 3 # soft trigger
+        self.TriggerMode = trigger_mode
+
+        # number of images for collection and streaming
+        self.NumImages  = n
+        # set filesaver 
+        self.filePut('NumCapture',    n)
+        self.filePut('EnableCallbacks', 1)
+        self.filePut('FileNumber',    1)
+        self.filePut('AutoIncrement', 1)
+
+    def StartStreaming(self, n):
+        """start streamed acquisition to save with 
+        file saving plugin, and start acquisition
+        """
+        self.filePut('AutoSave', 1)
+        self.filePut('FileWriteMode', 2)  # stream
+        time.sleep(0.1)
+        self.filePut('Capture', 1)  # stream
+        self.Acquire = 1
+
+
+    def filePut(self, attr, value, **kw):
+        return self.put("File_%s" % attr, value, **kw)
 
     def fileGet(self, attr, **kw):
-        return self.get("%s%s" % (self.filesaver, attr), **kw)
+        return self.get("File_%s" % attr, **kw)
 
     def setFilePath(self, pathname):
         return self.filePut('FilePath', pathname)
