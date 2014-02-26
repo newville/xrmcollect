@@ -19,6 +19,15 @@ from .io.file_utils import new_filename, increment_filename, nativepath
 # should look this up from Struck!
 MAX_POINTS = 5000
 
+from gui_utils import (GUIColors, set_font_with_children, YesNo,
+                        add_button, add_subtitle, okcancel, Font,
+                        pack, SimpleText, LCEN, CEN, RCEN,
+                        FRAMESTYLE)
+
+LCEN |= wx.ALL
+RCEN |= wx.ALL
+CEN  |= wx.ALL
+
 FNB_STYLE = flat_nb.FNB_NO_X_BUTTON|flat_nb.FNB_SMART_TABS|flat_nb.FNB_NO_NAV_BUTTONS
 
 def Connect_Motors():
@@ -37,17 +46,15 @@ def addtoMenu(parent,menu,label,text,action=None):
     if callable(action): wx.EVT_MENU(parent, ID, action)
 
 class SetupFrame(wx.Frame):
-    def __init__(self, config=None, **kwds):
+    def __init__(self, config=None, callback=None, **kwds):
         self.config = config
-
+        self.callback = callback
         kwds["style"] = wx.DEFAULT_FRAME_STYLE
-        wx.Frame.__init__(self, None, -1, **kwds)
-
-        self.Font11=wx.Font(11, wx.SWISS, wx.NORMAL, wx.BOLD, 0, "")
-
+        wx.Frame.__init__(self, None, -1,style=FRAMESTYLE)
+        
         self.SetTitle("Setup For Fast Maps")
-        self.SetSize((850, 550))
-        self.SetFont(self.Font11)
+        self.SetSize((850, 620))
+        self.SetFont(Font(11))
 
         fmenu = wx.Menu()
         addtoMenu(self,fmenu, "&Quit", "Quit Setup",  self.onClose)
@@ -58,7 +65,7 @@ class SetupFrame(wx.Frame):
         self.buildPanel()
 
     def buildPanel(self):
-        self.SetMinSize((740, 450))
+        self.SetMinSize((800, 600))
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         
@@ -71,32 +78,39 @@ class SetupFrame(wx.Frame):
         self.subpanels = {}
         self.confwids = {}
         for sect, title in (('general',  'Main Settings'),
-                            ('beam_ok',  'Beam Monitor'),
+                            ('xrf',      'XRF Detector'), 
                             ('xrd_ad',   'X-ray Diffraction'),
                             ('image_ad', 'Optical Camera'),
                             ('xps',      'Newport XPS Settings'),
-                            ('slow_positioners', 'Slow Positioners')):
+                            ('beam_ok',  'Beam Monitor') ):
+
             subpanel = wx.Panel(self)
             psizer = wx.GridBagSizer(10, 4)
             self.confwids[sect] = {}
             conf = self.config[sect]
             irow = 0
             keys = sorted(conf.keys())
-            
+            if sect == 'general':
+                 pass # sect = 'xmap', 
+            elif sect in ('xrf', 'xrd_ad', 'image_ad'):
+                keys = ('prefix', 'type', 'fileplugin', 'use')
+                    
             for word in keys:
                 value = conf[word]
-                psizer.Add(SimpleText(subpanel, word, style=wx.LEFT|wx.CENTER),
-                          (irow, 0), (1, 1), 3)
-                ctrl = wx.TextCtrl(subpanel, -1, value, size=(300, -1))
-                if value in ('False', 'True'):
-                    ctrl = wx.Choice(subpanel, -1, choices=('Yes', 'No'))
+                psizer.Add(SimpleText(subpanel, '   %s: ' % word,
+                                      style=wx.LEFT, size=(100, -1)), 
+                           (irow, 0), (1, 1), 7)
+                
+                if value in ('Yes', 'No', 'False', 'True'):
+                    ctrl = YesNo(subpanel,
+                                 defaultyes=value in ('Yes', 'True', True))
+                else:
+                    ctrl = wx.TextCtrl(subpanel, -1, value, size=(350, -1))
 
                 self.confwids[sect][word] = ctrl
                 psizer.Add(ctrl, (irow, 1), (1, 2), 3)
                 irow += 1
                 
-            psizer.Add(wx.StaticLine(subpanel, size=(200, 2),
-                                     style=wx.LI_HORIZONTAL), (irow, 0), (1, 3))
             
             self.subpanels[sect] = subpanel
             self.nb.AddPage(subpanel, title)
@@ -108,11 +122,13 @@ class SetupFrame(wx.Frame):
             
         self.nb.SetSelection(0)
 
-        sizer.Add(wx.StaticLine(self, size=(475, 3),
+        sizer.Add(wx.StaticLine(self, size=(550, 3),
                                 style=wx.LI_HORIZONTAL), 0, wx.EXPAND)
         sizer.Add(self.nb, 1, wx.ALL|wx.EXPAND)
-        sizer.Add(wx.StaticLine(self, size=(475, 3),
+        sizer.Add(wx.StaticLine(self, size=(575, 3),
                                 style=wx.LI_HORIZONTAL), 0, wx.EXPAND)
+
+        sizer.Add(okcancel(self, self.onOK, self.onClose), 0, wx.EXPAND)
             
         sizer.SetSizeHints(self)
         self.SetSizer(sizer)
@@ -120,12 +136,19 @@ class SetupFrame(wx.Frame):
         self.Show()
         self.Raise()
 
-    def onDone(self, event=None):
-        for table in self.tables:
-            del_ids = table.onOK()
-            for scanid in del_ids:
-                self.scandb.del_scandef(scanid=scanid)
-        self.scandb.commit()
+    def onOK(self, event=None):
+        for name, section in self.confwids.items():
+            for key, wid in section.items():
+                val = None
+                if hasattr(wid, 'GetValue'):
+                    val = wid.GetValue()
+                elif hasattr(wid, 'GetStringSelection'):
+                    val = wid.GetStringSelection()                    
+                if val is not None:
+                    self.config[name][key] = val
+        if self.callback is not None:
+            self.callback(self.config)
+
         self.Destroy()
 
     def onClose(self,evt=None):
@@ -178,6 +201,7 @@ class FastMapGUI(wx.Frame):
         self.data_fname  = None
         self.data_mode   = 'w'
         self.mapconf = None
+        self.scanonly_ok = True
         self._pvs = motorpvs
         self.start_time = time.time() - 100.0
         self.configfile = configfile
@@ -371,8 +395,13 @@ class FastMapGUI(wx.Frame):
         self.Destroy()
 
     def onSetup(self,evt=None):
-        SetupFrame(config=self.config)
-
+        SetupFrame(config=self.config, callback=self.onConfigChanged)
+        # print 'DONE Bringing up SetupFrame'
+        
+    def onConfigChanged(self, conf):
+        self.config = conf
+        self.scanonly_ok = False
+            
     @EpicsFunction
     def onFolderSelect(self,evt):
         style = wx.DD_DIR_MUST_EXIST|wx.DD_DEFAULT_STYLE
@@ -390,7 +419,7 @@ class FastMapGUI(wx.Frame):
         dlg.Destroy()
 
     def onSaveScanFile(self,evt=None):
-        self.onSaveConfigFile(evt=evt,scan_only=True)
+        self.onSaveConfigFile(evt=evt, scan_only=True)
 
     def onSaveConfigFile(self,evt=None,scan_only=False):
         fout=self.configfile
@@ -693,7 +722,10 @@ class FastMapGUI(wx.Frame):
         if os.path.exists(sname):
             shutil.copy(sname, 'PreviousScan.ini')
 
-        self.SaveConfigFile(sname, scan_only=True)
+        # save full config if user altered configuration
+        self.SaveConfigFile(sname, scan_only=self.scanonly_ok)
+        self.scanonly_ok = True
+
         self.mapper.StartScan(fname, sname)
 
         # setup escan saver
