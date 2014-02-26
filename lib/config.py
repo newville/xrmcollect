@@ -69,7 +69,7 @@ prefix = 13IDEPS1:
 fileplugin = TIFF1:
 [xps]
 type = NewportXPS
-mode = XYGroup
+mode = PVTGroup
 host = 164.54.160.180
 user   = Administrator
 passwd = Administrator
@@ -92,12 +92,12 @@ step2 = 0.01
 2 = 13XRM:m2 | Y
 3 = 13XRM:m3 | Theta
 [slow_positioners]
-1 = 13XRM:m1  | X
-2 = 13XRM:m2  | Y
-3 = 13XRM:m3  | Theta
-4 = 13XRM:pm2 | Stage X
-5 = 13XRM:m6  | Stage Y (vert)
-6 = 13XRM:pm1 | Stage Z (focus)
+1 = 13XRM:m1 | X
+2 = 13XRM:m2 | Y
+3 = 13XRM:m3 | Theta
+4 = 13XRM:m4 | Stage X
+5 = 13XRM:m6 | Stage Y (vert)
+6 = 13XRM:m5 | Stage Z (focus)
 """
 
 class FastMapConfig(object):
