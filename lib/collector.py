@@ -13,6 +13,7 @@ from .io.file_utils import nativepath, winpath, fix_filename, increment_filename
 from .io.escan_writer import EscanWriter
 
 from .xps.xps_trajectory import XPSTrajectory
+from .xrd_ad import PerkinElmer_AD
 from .xmap import MultiXMAP
 from .xmap.xsp3 import XSP3
 
@@ -20,12 +21,9 @@ from mapper import mapper
 from config import FastMapConfig
 from set_mono_tilt import set_mono_tilt
 
-USE_XMAP = True
-USE_XSP3 = False
-USE_STRUCK = True
 USE_MONO_CONTROL = True
 
-SCAN_VERSION = '1.1'
+SCAN_VERSION = '1.2'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
 ROW_MSG = '(%i, %i/%i/%i)' 
 
@@ -61,6 +59,9 @@ class TrajectoryScan(object):
         basedir     = conf.get('general', 'basedir')
         fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
+        self.xrf_type = conf.get('xrf', 'type').lower()
+        self.use_xrf = conf.get('xrf', 'use')
+        self.use_xrd = conf.get('xrd_ad', 'use')
 
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
@@ -72,18 +73,23 @@ class TrajectoryScan(object):
         self.ROWS_Written = False
         self.xps = XPSTrajectory(**conf.get('xps'))
         self.dtime = debugtime()
-        self.struck = None
-        self.xmap = None
-        if USE_STRUCK:
-            self.struck = Struck(struck, scaler=scaler)
-            self.struck.read_all_mcas()
-        if USE_XMAP:
-            self.xmap = MultiXMAP(xmappv, filesaver=fileplugin)
-            self.xmap.SpectraMode()
-            self.xmap.start()            
-        if USE_XSP3:
-            self.xsp3 = XSP3('mp49:XSP3:')
 
+        self.struck = Struck(struck, scaler=scaler)
+        self.struck.read_all_mcas()
+
+        self.xmap = None
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                self.xmap = MultiXMAP(xmappv, filesaver=fileplugin)
+                self.xmap.SpectraMode()
+                self.xmap.start()            
+            elif self.xrf_type.startswith('xsp'):
+                self.xsp3 = XSP3('mp49:XSP3:')
+
+        self.xrdcam = None
+        if self.use_xrd:
+            self.xrdcam = PerkinElmer_AD(config('xrd_ad', 'prefix'))
+            
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
             self.positioners[pname] = self.PV(pname)
@@ -166,32 +172,48 @@ class TrajectoryScan(object):
         self.workdir = os.path.abspath(os.path.join(basedir,subdir))
         self.write('=Scan folder: %s' % self.workdir)
 
-        if USE_XMAP:
+        if self.use_xrf and self.xrf_type == 'xmap':
             self.xmap.setFilePath(winpath(self.workdir))
+
+        if self.use_xrd:
+            self.xrdcam.setFilePath(winpath(self.workdir))
 
         self.ROI_Written = False
         self.ENV_Written = False
         self.ROWS_Written = False
         return subdir
 
-    def prescan(self, filename=None, filenumber=1, npulses=11, **kw):
+    def prescan(self, filename=None, filenumber=1, npulses=11,
+                scantime=1.0, **kw):
         """ put all pieces (trajectory, struck, xmap) into
         the proper modes for trajectory scan"""
-        if USE_XMAP:
-            # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
-            self.xmap.setFileTemplate('%s%s.%4.4d')
-            self.xmap.setFileWriteMode(2)
-            self.xmap.MCAMode(filename='xmap', npulses=npulses)
-        self.dtime.add('prescan xmap')            
-        if USE_STRUCK:
-            self.struck.ExternalMode()
-            self.struck.put('PresetReal', 0.0)
-            self.struck.put('Prescale',   1.0)
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
+                self.xmap.setFileTemplate('%s%s.%4.4d')
+                self.xmap.setFileWriteMode(2)
+                self.xmap.MCAMode(filename='xmap', npulses=npulses)
+                self.xmap.setFileNumber(1)
+            elif self.xrf_type.startswith('xsp'):
+                self.xsp3.ERASE = 1
+                self.xsp3.NumImages = npulses
+                self.xsp3.setFileNumber(1)
+
+        if self.use_xrd:
+            self.xrdcam.setFilePath(winpath(self.workdir))
+            time_per_pixel = scantime/npulses
+            print 'XRD Camera: Time per pixel ', time_per_pixel
+            self.xrdcam.SetExposureTime(time_per_pixel)
+            self.xrdcam.SetMultiFrames(npulses)
+            self.xrdcam.setFileName('xrd')
+
+        self.dtime.add('prescan xrf det')            
+
+        self.struck.ExternalMode()
+        self.struck.put('PresetReal', 0.0)
+        self.struck.put('Prescale',   1.0)
         self.dtime.add('prescan struck')
 
-        if USE_XSP3:
-            self.xsp3.ERASE = 1
-            self.xsp3.NumImages = npulses
         self.ROI_Written = False
         self.ENV_Written = False
         self.dtime.add('prescan done')
@@ -199,14 +221,15 @@ class TrajectoryScan(object):
     def postscan(self):
         """ put all pieces (trajectory, struck, xmap) into
         the non-trajectory scan mode"""
-        if USE_XMAP:
-            self.Wait_XMAPWrite(irow=0)
-            self.dtime.add('postscan xmap data written')            
-            self.xmap.SpectraMode()
-            self.dtime.add('postscan xmap in Spectra Mode')                        
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                self.Wait_XMAPWrite(irow=0)
+                self.dtime.add('postscan xmap data written')
+                self.xmap.SpectraMode()
+                self.dtime.add('postscan xmap in Spectra Mode')
+            time.sleep(0.25)
+                
         self.setIdle()
-        if USE_XSP3:
-            time.sleep(0.5)
         self.dtime.add('postscan done')
 
     def save_positions(self, poslist=None):
@@ -229,7 +252,7 @@ class TrajectoryScan(object):
     def Wait_XMAPWrite(self, irow=0):
         """wait for XMAP to finish writing its data"""
         fnum = irow
-        if USE_XMAP:
+        if self.use_xrf and self.xrf_type.startswith('xmap'):
             # wait for previous netcdf file to be written
             t0 = time.time()
             time.sleep(0.1)
@@ -325,7 +348,8 @@ class TrajectoryScan(object):
         # move to starting position
         dir_offset += POSITIONER_OFFSETS[axis1[0]]
         p1_start = start1
-        if dir_offset % 2 != 0:    p1_start = stop1
+        if dir_offset % 2 != 0:
+            p1_start = stop1
         self.PV(pos1).put(p1_start, wait=False)
         
         self.dtime.add( 'put #1 done')        
@@ -335,15 +359,20 @@ class TrajectoryScan(object):
 
         self.prescan(**kw)
         self.dtime.add( 'prescan done')        
-        self.xmap.setFileNumber(1)
-        self.xmap.FileCaptureOn()
 
         self.PV(pos1).put(p1_start, wait=True)
         if dimension > 1:
             self.PV(pos2).put(start2, wait=True)
 
-        if USE_XSP3:
-            self.xsp3.setFileNumber(1)
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                self.xmap.FileCaptureOn()
+            elif self.xrf_type.startswith('xsp'):
+                pass
+        if self.use_xrd:
+            self.xrdcam.StartStreaming()
+
+
 
         irow = 0
         while irow < npts2:
@@ -459,29 +488,28 @@ class TrajectoryScan(object):
                           npulses=11, wait=False, **kw):
         """ run individual trajectory"""
         t0 = time.time()
-        if USE_XMAP:
-            self.xmap.setFileNumber(scan_pt)
-            self.xmap.FileCaptureOn()
-            time.sleep(0.1)
-            self.xmap.EraseStart = 1
-            while self.xmap.Acquiring != 1 and time.time()-t0 < 10.0:
-                self.xmap.EraseStart = 1
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                self.xmap.setFileNumber(scan_pt)
+                self.xmap.FileCaptureOn()
                 time.sleep(0.1)
-            self.dtime.add('exec: xmap armed? %s' % (repr(1==self.xmap.Acquiring)))
-
-        if USE_XSP3:
-            # complex Acquire On / FileCapture On:
-            self.xsp3.setFileNumber(scan_pt)
-            self.xsp3.Acquire = 0
-            time.sleep(0.1)
-            self.xsp3.ERASE  = 1
-            self.xsp3.FileCaptureOn()
-            time.sleep(0.1)
-            self.xsp3.Acquire = 1
-            time.sleep(0.05)
-
-        if USE_STRUCK:
-            self.struck.start()
+                self.xmap.EraseStart = 1
+                while self.xmap.Acquiring != 1 and time.time()-t0 < 10.0:
+                    self.xmap.EraseStart = 1
+                    time.sleep(0.1)
+                    self.dtime.add('exec: xmap armed? %s' % (repr(1==self.xmap.Acquiring)))
+            elif self.xrf_type.startswith('xsp'):
+                # complex Acquire On / FileCapture On:
+                self.xsp3.setFileNumber(scan_pt)
+                self.xsp3.Acquire = 0
+                time.sleep(0.1)
+                self.xsp3.ERASE  = 1
+                self.xsp3.FileCaptureOn()
+                time.sleep(0.1)
+                self.xsp3.Acquire = 1
+                time.sleep(0.05)
+                
+        self.struck.start()
 
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
@@ -496,25 +524,24 @@ class TrajectoryScan(object):
         self.state = 'scanning'
         self.dtime.add('ExecTraj: traj thread begun')
         t0 = time.time()
-        if USE_XMAP and not self.ROI_Written:
-            xmap_prefix = self.mapconf.get('general', 'xmap')
-            fout    = os.path.join(self.workdir, 'ROI.dat')
-            try:
-                fh = open(fout, 'w')
-                fh.write('\n'.join(self.xmap.roi_calib_info()))
-                fh.close()
-                self.ROI_Written = True
-                self.dtime.add('ExecTraj: ROI done')
-            except:
-                self.dtime.add('ExecTraj: ROI saving failed!!')
+        if self.use_xrf and not self.ROI_Written:
+            if self.xrf_type.startswith('xmap'):
+                xmap_prefix = self.mapconf.get('general', 'xmap')
+                fout = os.path.join(self.workdir, 'ROI.dat')
+                try:
+                    fh = open(fout, 'w')
+                    fh.write('\n'.join(self.xmap.roi_calib_info()))
+                    fh.close()
+                    self.ROI_Written = True
+                    self.dtime.add('ExecTraj: ROI done')
+                except:
+                    self.dtime.add('ExecTraj: ROI saving failed!!')
         if not self.ENV_Written:
             fout    = os.path.join(self.workdir, 'Environ.dat')
             self.Write_EnvData(filename=fout)
             self.ENV_Written = True
             self.dtime.add('ExecTraj: Env done')
 
-        #if USE_XMAP:
-        #    self.WriteEscanData()
 
         # now wait for scanning thread to complete
         scan_thread.join()
@@ -523,7 +550,7 @@ class TrajectoryScan(object):
             time.sleep(0.002)
 
         # wait for Xspress3 to finish
-        if USE_XSP3:
+        if self.use_xrf and self.xrf_type.startswith('xsp'):
             if self.xsp3.DetectorState_RBV != 0:
                 xsp3_ready = False
                 count = 0
@@ -572,8 +599,7 @@ class TrajectoryScan(object):
     def WriteRowData(self, filename='TestMap', scan_pt=1, ypos=0, npts=None):
         # NOTE:!!  should return here, write files separately.
 
-        if USE_STRUCK:
-            self.struck.stop()
+        self.struck.stop()
         strk_fname = self.make_filename('struck', scan_pt)
         xmap_fname = self.make_filename('xmap', scan_pt)
         xps_fname  = self.make_filename('xps', scan_pt)
@@ -584,27 +610,27 @@ class TrajectoryScan(object):
         saver_thread.start()
         # self.xps.SaveResults(xps_fname)
         nxmap = 0
-        if USE_XMAP:
+        if self.use_xrf and self.xrf_type.startswith('xmap'):
             xmap_fname = nativepath(self.xmap.getFileNameByIndex(scan_pt))[:-1]
             nxmap = self.Wait_XMAPWrite(irow=scan_pt)
 
-        if USE_STRUCK:
-            wrote_struck = False
-            t0 =  time.time()
-            counter = 0
-            while not wrote_struck and time.time()-t0 < 15.0:
-                counter = counter + 1
-                try:
-                    self.struck.saveMCAdata(fname=strk_fname)
-                    wrote_struck = True
-                except:
-                    print 'trouble saving struck data.. will retry'
-                time.sleep(0.1 + 0.2*counter)
-            if not wrote_struck:
-                self.rowdata_ok = False
-                self.write('Bad data -- Could not SAVE STRUCK DATA!')
-                
-            self.dtime.add('struck saved (%i tries)' % counter)
+
+        wrote_struck = False
+        t0 =  time.time()
+        counter = 0
+        while not wrote_struck and time.time()-t0 < 15.0:
+            counter = counter + 1
+            try:
+                self.struck.saveMCAdata(fname=strk_fname)
+                wrote_struck = True
+            except:
+                print 'trouble saving struck data.. will retry'
+            time.sleep(0.1 + 0.2*counter)
+        if not wrote_struck:
+            self.rowdata_ok = False
+            self.write('Bad data -- Could not SAVE STRUCK DATA!')
+
+        self.dtime.add('struck saved (%i tries)' % counter)
 
         # wait for saving of gathering file to complete
         saver_thread.join()
