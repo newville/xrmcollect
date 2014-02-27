@@ -91,13 +91,13 @@ class PerkinElmer_AD(epics.Device):
         self.filePut('FileNumber',    1)
         self.filePut('AutoIncrement', 1)
 
-    def StartStreaming(self, n):
+    def StartStreaming(self):
         """start streamed acquisition to save with 
         file saving plugin, and start acquisition
         """
         self.filePut('AutoSave', 1)
         self.filePut('FileWriteMode', 2)  # stream
-        time.sleep(0.1)
+        time.sleep(0.025)
         self.filePut('Capture', 1)  # stream
         self.Acquire = 1
 
