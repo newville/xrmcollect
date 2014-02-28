@@ -96,7 +96,7 @@ class SetupFrame(wx.Frame):
                 keys = ('prefix', 'type', 'fileplugin', 'use')
                     
             for word in keys:
-                value = conf[word]
+                value = str(conf[word])
                 psizer.Add(SimpleText(subpanel, '   %s: ' % word,
                                       style=wx.LEFT, size=(100, -1)), 
                            (irow, 0), (1, 1), 7)
@@ -105,7 +105,10 @@ class SetupFrame(wx.Frame):
                     ctrl = YesNo(subpanel,
                                  defaultyes=value in ('Yes', 'True', True))
                 else:
-                    ctrl = wx.TextCtrl(subpanel, -1, value, size=(350, -1))
+                    if value is None:
+                        value = ''
+                    sval = str(value)
+                    ctrl = wx.TextCtrl(subpanel, -1, sval, size=(350, -1))
 
                 self.confwids[sect][word] = ctrl
                 psizer.Add(ctrl, (irow, 1), (1, 2), 3)
