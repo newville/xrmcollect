@@ -7,11 +7,11 @@ class PerkinElmer_AD(epics.Device):
     camattrs = ('PEAcquireOffset', 'PENumOffsetFrames', 
                 'ImageMode', 'TriggerMode',
                 'Acquire',  'AcquireTime', 'Model_RBV', 
-                'NumImages', 'ShutterControl')
+                'NumImages', 'ShutterControl', 'ShutterMode')
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
-                 'Capture',  'NumCapture', 'WriteFile_RBV',
+                 'Capture',  'Capture_RBV', 'NumCapture', 'WriteFile_RBV',
                  'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
@@ -43,29 +43,33 @@ class PerkinElmer_AD(epics.Device):
         4. reset image mode and trigger mode
         5. optionally (by default) open shutter
         """
+        self.ShutterMode = 1
         self.ShutterControl = 0
         image_mode_save = self.ImageMode 
         trigger_mode_save = self.TriggerMode 
         self.ImageMode = 0
         self.TriggerMode = 0
         offtime = self.PENumOffsetFrames * self.AcquireTime
-        time.sleep(0.25)
+        time.sleep(0.50)
         self.PEAcquireOffset = 1
         t0 = time.time()
         time.sleep(offtime/3.0)
         while self.PEAcquireOffset > 0 and time.time()-t0 < timeout+offtime:
             time.sleep(0.1)
-
+        time.sleep(1.00)
         self.ImageMode = image_mode_save
         self.TriggerMode = trigger_mode_save
+        time.sleep(1.00)
         if open_shutter:
             self.ShutterControl = 1
-
+        self.ShutterMode = 0
+        time.sleep(1.00)
+        
     def SetExposureTime(self, t, open_shutter=True):
         "set exposure time, re-acquire offset correction"
         self.AcquireTime = t
         self.AcquireOffset(open_shutter=open_shutter)
-    
+        
     def SetMultiFrames(self, n, trigger='external'):
         """set number of multiple frames for streaming
         this sets number of images for camera in Multiple Image Mode
@@ -81,8 +85,10 @@ class PerkinElmer_AD(epics.Device):
             trigger_mode = 2 # free running
         elif trigger.lower().startswith('soft'):
             trigger_mode = 3 # soft trigger
+        time.sleep(0.1)
+        
         self.TriggerMode = trigger_mode
-
+        print 'PE Det MultiFrames trigger_mode = ', self.TriggerMode
         # number of images for collection and streaming
         self.NumImages  = n
         # set filesaver 
@@ -90,16 +96,38 @@ class PerkinElmer_AD(epics.Device):
         self.filePut('EnableCallbacks', 1)
         self.filePut('FileNumber',    1)
         self.filePut('AutoIncrement', 1)
+        time.sleep(2.0)
 
     def StartStreaming(self):
         """start streamed acquisition to save with 
         file saving plugin, and start acquisition
         """
+        self.ShutterMode = 0        
         self.filePut('AutoSave', 1)
         self.filePut('FileWriteMode', 2)  # stream
-        time.sleep(0.025)
+        time.sleep(0.05)
         self.filePut('Capture', 1)  # stream
         self.Acquire = 1
+        time.sleep(0.25)
+
+
+    def FinishStreaming(self, timeout=5.0):
+        """start streamed acquisition to save with 
+        file saving plugin, and start acquisition
+        """
+        t0 = time.time()
+        capture_on = self.fileGet('Capture_RBV')
+        while capture_on==1 and time.time() - t0 < timeout:
+            time.sleep(0.05)
+            capture_on = self.fileGet('Capture_RBV')
+        if capture_on != 0:
+            print 'Forcing XRD Streaming to stop'
+            self.filePut('Capture', 0)
+            t0 = time.time()
+            while capture_on==1 and time.time() - t0 < timeout:
+                time.sleep(0.05)
+                capture_on = self.fileGet('Capture_RBV')
+        time.sleep(0.50)
 
 
     def filePut(self, attr, value, **kw):

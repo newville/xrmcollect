@@ -88,8 +88,8 @@ class TrajectoryScan(object):
 
         self.xrdcam = None
         if self.use_xrd:
-            self.xrdcam = PerkinElmer_AD(config('xrd_ad', 'prefix'))
-            
+            self.xrdcam = PerkinElmer_AD(conf('xrd_ad', 'prefix'))
+ 
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
             self.positioners[pname] = self.PV(pname)
@@ -177,6 +177,7 @@ class TrajectoryScan(object):
 
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
+            print 'xrd file path ', self.workdir
 
         self.ROI_Written = False
         self.ENV_Written = False
@@ -201,8 +202,8 @@ class TrajectoryScan(object):
 
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
-            time_per_pixel = scantime/npulses
-            print 'XRD Camera: Time per pixel ', time_per_pixel
+            time_per_pixel = scantime/(npulses-1)
+            print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
             self.xrdcam.SetExposureTime(time_per_pixel)
             self.xrdcam.SetMultiFrames(npulses)
             self.xrdcam.setFileName('xrd')
@@ -228,7 +229,7 @@ class TrajectoryScan(object):
                 self.xmap.SpectraMode()
                 self.dtime.add('postscan xmap in Spectra Mode')
             time.sleep(0.25)
-                
+
         self.setIdle()
         self.dtime.add('postscan done')
 
@@ -364,15 +365,12 @@ class TrajectoryScan(object):
         if dimension > 1:
             self.PV(pos2).put(start2, wait=True)
 
+        print 'Start SCAN  use XRD: ', self.use_xrd
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
                 self.xmap.FileCaptureOn()
             elif self.xrf_type.startswith('xsp'):
                 pass
-        if self.use_xrd:
-            self.xrdcam.StartStreaming()
-
-
 
         irow = 0
         while irow < npts2:
@@ -511,6 +509,9 @@ class TrajectoryScan(object):
                 
         self.struck.start()
 
+        if self.use_xrd:
+            self.xrdcam.StartStreaming()
+
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
 
@@ -563,7 +564,7 @@ class TrajectoryScan(object):
                         self.xsp3.FileCaptureOff()
 
         self.dtime.add('ExecTraj: Scan Thread complete.')
-        time.sleep(0.01)
+        time.sleep(0.05)
 
     def WriteEscanData(self):
         self.escan_saver.folder = self.workdir
@@ -632,15 +633,20 @@ class TrajectoryScan(object):
 
         self.dtime.add('struck saved (%i tries)' % counter)
 
+
         # wait for saving of gathering file to complete
         saver_thread.join()
 
         self.dtime.add('xps saved')
         rowinfo = self.make_rowinfo(xmap_fname, strk_fname, xps_fname, ypos=ypos)
 
+        if self.use_xrd:
+            self.xrdcam.FinishStreaming()
+
         n_xps = self.xps.nlines_out
         n_sis = self.struck.CurrentChannel
         n_xrf = self.xmap.PixelsPerRun
+
 
         sys.stdout.write(ROW_MSG % (scan_pt, n_xps, n_sis, n_xrf))
         sys.stdout.flush()
@@ -701,6 +707,12 @@ class TrajectoryScan(object):
         self.check_beam_ok()
 
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
+
+        self.use_xrd = self.mapconf.get('xrd_ad', 'use')
+        self.xrdcam = None
+        if self.use_xrd:
+            self.xrdcam = PerkinElmer_AD(self.mapconf.get('xrd_ad', 'prefix'))
+
         self.dtime.add(' read config')        
         self.mapper.message = 'preparing scan...'
         self.mapper.info  = 'Starting'
