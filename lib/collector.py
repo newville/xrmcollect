@@ -188,9 +188,9 @@ class TrajectoryScan(object):
                 scantime=1.0, **kw):
         """ put all pieces (trajectory, struck, xmap) into
         the proper modes for trajectory scan"""
+        self.npulses = npulses
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
-                # self.xmap.setFileTemplate('%s%s_%4.4d.nc')
                 self.xmap.setFileTemplate('%s%s.%4.4d')
                 self.xmap.setFileWriteMode(2)
                 self.xmap.MCAMode(filename='xmap', npulses=npulses)
@@ -208,6 +208,7 @@ class TrajectoryScan(object):
             self.xrdcam.SetMultiFrames(npulses)
             self.xrdcam.setFileName('xrd')
 
+        time.sleep(0.25)
         self.dtime.add('prescan xrf det')            
 
         self.struck.ExternalMode()
@@ -269,6 +270,11 @@ class TrajectoryScan(object):
                     self.mapper.message = 'XMAP File Writing Not Complete!'
                     self.rowdata_ok = False
                     self.xmap.FileCaptureOff()
+                    time.sleep(0.5)
+                    self.xmap.SpectraMode()
+                    time.sleep(0.5)
+                    self.xmap.MCAMode(filename='xmap', npulses=self.npulses)                    
+                    time.sleep(0.5)
                     print 'could not complete file writing!'
                     self.write('Bad data -- XMAP could not complete file writing')
                     break
@@ -351,8 +357,8 @@ class TrajectoryScan(object):
         p1_start = start1
         if dir_offset % 2 != 0:
             p1_start = stop1
+
         self.PV(pos1).put(p1_start, wait=False)
-        
         self.dtime.add( 'put #1 done')        
         if dimension > 1:
             self.PV(pos2).put(start2, wait=False)
@@ -447,7 +453,8 @@ class TrajectoryScan(object):
         self.postscan()
         self.write('done.')
         self.dtime.add('map after postscan')
-
+        # self.dtime.show()
+        self.dtime.clear()
 
     def check_beam_ok(self, timeout=120):
         conf = self.mapconf.get('beam_ok')
@@ -543,7 +550,6 @@ class TrajectoryScan(object):
             self.ENV_Written = True
             self.dtime.add('ExecTraj: Env done')
 
-
         # now wait for scanning thread to complete
         scan_thread.join()
         while scan_thread.isAlive() and time.time()-t0 < scantime+5.0:
@@ -611,10 +617,14 @@ class TrajectoryScan(object):
         saver_thread.start()
         # self.xps.SaveResults(xps_fname)
         nxmap = 0
+        self.dtime.add('Write: start xps save thread')
+
         if self.use_xrf and self.xrf_type.startswith('xmap'):
             xmap_fname = nativepath(self.xmap.getFileNameByIndex(scan_pt))[:-1]
             nxmap = self.Wait_XMAPWrite(irow=scan_pt)
 
+        self.dtime.add('Write: xmap saved')
+        
 
         wrote_struck = False
         t0 =  time.time()
@@ -631,13 +641,14 @@ class TrajectoryScan(object):
             self.rowdata_ok = False
             self.write('Bad data -- Could not SAVE STRUCK DATA!')
 
-        self.dtime.add('struck saved (%i tries)' % counter)
+        self.dtime.add('Write: struck saved (%i tries)' % counter)
+
 
 
         # wait for saving of gathering file to complete
         saver_thread.join()
 
-        self.dtime.add('xps saved')
+        self.dtime.add('Write: xps saved')
         rowinfo = self.make_rowinfo(xmap_fname, strk_fname, xps_fname, ypos=ypos)
 
         if self.use_xrd:
