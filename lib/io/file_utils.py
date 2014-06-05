@@ -37,6 +37,13 @@ def winpath(d):
     if not d.endswith('\\'): d = '%s\\' % d            
     return d
 
+def basepath(d):
+    if d.startswith(WIN_BASE):
+        d = d.replace(WIN_BASE, '')
+    if d.startswith(UNIX_BASE):
+        d = d.replace(UNIX_BASE, '')
+    return nativepath(d)
+
 def nativepath(d):
     if os.name == 'nt':
         return winpath(d)
