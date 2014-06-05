@@ -1,34 +1,100 @@
 #!/usr/bin/python
 import sys
+import os
 import time
-import epics
+from  epics import Device, caget, caput
 import numpy
 from ..utils import OrderedDict, debugtime
 
+from ConfigParser import ConfigParser
 
-class XSP3(epics.Device):
+MAX_ROIS = 16
+
+class XSP3(Device):
     """very simple XSPRESS3 interface"""
-    attrs = ('NumImages','Acquire','ERASE', 'DetectorState_RBV')
+    attrs = ('NumImages','Acquire','ERASE', 'TriggerMode',
+             'DetectorState_RBV', 'NumImages_RBV')
+
+    
+    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver', 'fileroot',
+                'pathattrs', '_nonpvs', 'nmca', 'dxps', 'mcas')
 
     pathattrs = ('FilePath', 'FileTemplate',
                  'FileName', 'FileNumber', 
                  'Capture',  'NumCapture')
 
-    def __init__(self, prefix, filesaver='HDF5:'):
+    def __init__(self, prefix, nmca=4, filesaver='HDF5:',
+                 fileroot='/home/xspress3/cars5/Data'):
+        self.nmca = nmca
         attrs = list(self.attrs)
         attrs.extend(['%s%s' % (filesaver,p) for p in self.pathattrs])
 
         self.filesaver = filesaver
+        self.fileroot = fileroot
         self._prefix = prefix
-        print prefix
 
-        print attrs
-        
-        
-        epics.Device.__init__(self, prefix, attrs=attrs, delim='')
+        Device.__init__(self, prefix, attrs=attrs, delim='')
 
         time.sleep(0.1)
 
+    def get_rois(self):
+        roidat = []
+        for imca in range(1, self.nmca+1):
+            roi = OrderedDict()
+            pref = "%sC%i" % (self._prefix, imca)
+            for iroi in range(1, MAX_ROIS+1):
+                name = caget("%s_ROI%i:AttrName" % (pref, iroi), as_string=True)
+                if name is not None and len(name) > 0:
+                    lo = caget("%s_MCA_ROI%i_LLM" % (pref, iroi))
+                    hi = caget("%s_MCA_ROI%i_HLM" % (pref, iroi))
+                    roi[name] = (lo, hi)
+            roidat.append(roi)
+        return roidat
+
+    
+    def load_roi_file(self, filename='ROI.dat'):
+        cp = ConfigParser()
+        cp.read(filename)
+        for iroi, opt in enumerate(cp.options('rois')):
+            iroi += 1
+            if iroi  > MAX_ROIS: break
+            dat = cp.get('rois', opt)
+            roiname, dat = [i.strip() for i in dat.split('|')]
+            dat = [int(i.strip()) for i in dat.split()]
+            nmcas = len(dat)/2
+            for imca in range(nmcas):
+                pv_nm = "%sC%i_ROI%i:AttrName" % (self._prefix, imca+1, iroi)
+                pv_lo = "%sC%i_MCA_ROI%i_LLM" % (self._prefix, imca+1, iroi)
+                pv_hi = "%sC%i_MCA_ROI%i_HLM" % (self._prefix, imca+1, iroi)
+                caput(pv_nm, roiname)
+                caput(pv_hi, dat[2*imca+1])
+                caput(pv_lo, dat[2*imca])
+                
+                
+    def roi_calib_info(self):
+        buff = ['[rois]']
+        add = buff.append
+        roidat = self.get_rois()
+
+        for i, k in enumerate(roidat[0].keys()):
+            s = [list(roidat[m][k]) for m in range(self.nmca)]
+            rd = repr(s).replace('],', '').replace('[', '').replace(']','').replace(',','')
+            add("ROI%2.2i = %s | %s" % (i,k,rd))
+
+        add('[calibration]')
+        add("OFFSET = %s " % (' '.join(["0.00 "] * self.nmca)))
+        add("SLOPE  = %s " % (' '.join(["0.10 "] * self.nmca)))                                        
+        add("QUAD   = %s " % (' '.join(["0.00 "] * self.nmca)))
+
+        add('[dxp]')
+        return buff
+
+    def useExternalTrigger(self):
+        self.TriggerMode = 2
+
+    def setTriggerMode(self, mode):
+        self.TriggerMode = mode
+        
     def start(self):
         "Start Struck"
         
@@ -45,8 +111,10 @@ class XSP3(epics.Device):
     def filePut(self, attr, value, **kw):
         return self.put("%s%s" % (self.filesaver, attr), value, **kw)
 
-    def setFilePath(self,pathname):
-        return self.filePut('FilePath', pathname)
+    def setFilePath(self, pathname):
+        fullpath = os.path.join(self.fileroot, pathname)
+        print("SET XSP3 File Path ", fullpath)
+        return self.filePut('FilePath', fullpath)
 
     def setFileTemplate(self,fmt):
         return self.filePut('FileTemplate', fmt)
