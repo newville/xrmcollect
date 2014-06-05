@@ -113,7 +113,6 @@ class XSP3(Device):
 
     def setFilePath(self, pathname):
         fullpath = os.path.join(self.fileroot, pathname)
-        print("SET XSP3 File Path ", fullpath)
         return self.filePut('FilePath', fullpath)
 
     def setFileTemplate(self,fmt):

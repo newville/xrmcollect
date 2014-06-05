@@ -15,10 +15,11 @@ class PerkinElmer_AD(epics.Device):
                  'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
-    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver',
+    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver', 'fileroot',
                 'camattrs', 'pathattrs', '_nonpvs')
 
-    def __init__(self,prefix, filesaver='netCDF1:'):
+    def __init__(self,prefix, filesaver='netCDF1:',
+                 fileroot='T:/'):
         camprefix = prefix + 'cam1:'
         epics.Device.__init__(self, camprefix, delim='',
                               mutable=False,
@@ -137,7 +138,8 @@ class PerkinElmer_AD(epics.Device):
         return self.get("File_%s" % attr, **kw)
 
     def setFilePath(self, pathname):
-        return self.filePut('FilePath', pathname)
+        fullpath = os.path.join(self.fileroot, pathname)
+        return self.filePut('FilePath', fullpath)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)

@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import sys
+import sys, os
 import time
 import epics
 import numpy
@@ -63,11 +63,13 @@ class MultiXMAP(epics.Device):
                  'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
-    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver',
+    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver', 'fileroot',
                 'pathattrs', '_nonpvs', 'nmca', 'dxps', 'mcas')
     
-    def __init__(self, prefix, filesaver='netCDF1:',nmca=4):
+    def __init__(self, prefix, filesaver='netCDF1:',
+                 fileroot='T:/', nmca=4):
         self.filesaver = filesaver
+        self.fileroot = fileroot        
         self._prefix = prefix
         self.nmca   = nmca
 
@@ -199,6 +201,7 @@ class MultiXMAP(epics.Device):
         self.stop()
         self.PresetMode = 0
         self.setFileWriteMode(2)
+        self.filePut('EnableCallbacks', 1)
         if npulses < 2:
             npulses = 2
         self.CollectMode = 1
@@ -267,7 +270,8 @@ class MultiXMAP(epics.Device):
         return self.get("%s%s" % (self.filesaver, attr), **kw)
 
     def setFilePath(self, pathname):
-        return self.filePut('FilePath', pathname)
+        fullpath = os.path.join(self.fileroot, pathname)
+        return self.filePut('FilePath', fullpath)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)
