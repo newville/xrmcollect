@@ -8,7 +8,7 @@ from ..utils import OrderedDict, debugtime
 
 from ConfigParser import ConfigParser
 
-MAX_ROIS = 16
+MAX_ROIS = 32
 
 class XSP3(Device):
     """very simple XSPRESS3 interface"""
@@ -34,10 +34,9 @@ class XSP3(Device):
         self._prefix = prefix
 
         Device.__init__(self, prefix, attrs=attrs, delim='')
-
         time.sleep(0.1)
 
-    def get_rois(self):
+    def OLDget_rois(self):
         roidat = []
         for imca in range(1, self.nmca+1):
             roi = OrderedDict()
@@ -51,7 +50,21 @@ class XSP3(Device):
             roidat.append(roi)
         return roidat
 
-    
+    def get_rois(self):
+        roidat = []
+        for imca in range(1, self.nmca+1):
+            rois = OrderedDict()
+            pref = "%smca%d" % ( self._prefix, imca)
+            for iroi in range(MAX_ROIS):
+                nm = caget('%s.R%dNM' % (pref, iroi))
+                lo = caget('%s.R%dLO' % (pref, iroi))
+                hi = caget('%s.R%dHI' % (pref, iroi))
+                if len(nm) < 1 or lo < 0:
+                    break
+                rois[nm] = (lo, hi)
+            roidat.append(rois)
+        return roidat
+        
     def load_roi_file(self, filename='ROI.dat'):
         cp = ConfigParser()
         cp.read(filename)
@@ -82,15 +95,15 @@ class XSP3(Device):
             add("ROI%2.2i = %s | %s" % (i,k,rd))
 
         add('[calibration]')
-        add("OFFSET = %s " % (' '.join(["0.00 "] * self.nmca)))
-        add("SLOPE  = %s " % (' '.join(["0.10 "] * self.nmca)))                                        
-        add("QUAD   = %s " % (' '.join(["0.00 "] * self.nmca)))
+        add("OFFSET = %s " % (' '.join(["0.000 "] * self.nmca)))
+        add("SLOPE  = %s " % (' '.join(["0.010 "] * self.nmca)))                                        
+        add("QUAD   = %s " % (' '.join(["0.000 "] * self.nmca)))
 
         add('[dxp]')
         return buff
 
     def useExternalTrigger(self):
-        self.TriggerMode = 2
+        self.TriggerMode = 3
 
     def setTriggerMode(self, mode):
         self.TriggerMode = mode
