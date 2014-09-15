@@ -9,7 +9,9 @@ from epics import caput
 from epics.devices.struck import Struck
 
 from .utils import debugtime
-from .io.file_utils import nativepath, winpath, fix_filename, increment_filename, basepath
+from .io.file_utils import (nativepath, winpath, fix_filename,
+                            increment_filename, basepath)
+                            
 from .io.escan_writer import EscanWriter
 
 from .xps.xps_trajectory import XPSTrajectory
@@ -22,7 +24,9 @@ from config import FastMapConfig
 from set_mono_tilt import set_mono_tilt
 
 USE_MONO_CONTROL = True
-
+#USE_MONO_CONTROL = False 
+XRF_TYPE = 'xmap'
+# XRF_TYPE = 'xsp3'
 SCAN_VERSION = '1.2'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
 ROW_MSG = '(%i, %i/%i/%i)' 
@@ -55,14 +59,13 @@ class TrajectoryScan(object):
         conf = self.mapconf = FastMapConfig(configfile)
         struck      = conf.get('general', 'struck')
         scaler      = conf.get('general', 'scaler')
-        xmappv      = conf.get('general', 'xmap')
         basedir     = conf.get('general', 'basedir')
-        fileplugin  = conf.get('general', 'fileplugin')
         mapdb       = conf.get('general', 'mapdb')
-        self.xrf_type = conf.get('xrf', 'type').lower()
+        # self.xrf_type = conf.get('xrf', 'type').lower()
+        self.xrf_pref = conf.get('xrf', 'prefix')
+
         self.use_xrf = conf.get('xrf', 'use')
         self.use_xrd = conf.get('xrd_ad', 'use')
-
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
         self.scan_t0  = time.time()
@@ -78,17 +81,26 @@ class TrajectoryScan(object):
         self.struck.read_all_mcas()
 
         self.xmap = None
+        self.xsp3 = None
+        self.xrf_pref = conf.get('xrf', 'prefix')
+        self.use_xrf  = conf.get('xrf', 'use')
+
+        self.xrf_type  = XRF_TYPE 
+
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
-                self.xmap = MultiXMAP(xmappv, filesaver=fileplugin)
+                self.xmap = MultiXMAP(self.xrf_pref)
                 self.xmap.SpectraMode()
                 self.xmap.start()            
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3 = XSP3('QX4:', fileroot='/home/xspress3/cars5/Data/')
+                self.xsp3 = XSP3('QX4:', # self.xrf_pref,
+                                fileroot='/home/xspress3/cars5/Data/')
 
+                
         self.xrdcam = None
         if self.use_xrd:
             self.xrdcam = PerkinElmer_AD(conf('xrd_ad', 'prefix'))
+
  
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
@@ -170,16 +182,7 @@ class TrajectoryScan(object):
 
         self.mapper.workdir = subdir
         self.workdir = os.path.abspath(os.path.join(basedir, subdir))
-        det_path  = os.path.join(top_path, subdir)
         self.write('=Scan folder: %s' % self.workdir)
-        
-        if self.use_xrf and self.xrf_type == 'xmap':
-            self.xmap.setFilePath(winpath(det_path))
-        elif self.use_xrf and self.xrf_type.startswith('xsp'):
-            self.xsp3.setFilePath(det_path)
-
-        if self.use_xrd:
-            self.xrdcam.setFilePath(winpath(det_path))
 
         self.ROI_Written = False
         self.ENV_Written = False
@@ -191,6 +194,9 @@ class TrajectoryScan(object):
         """ put all pieces (trajectory, struck, xmap) into
         the proper modes for trajectory scan"""
         self.npulses = npulses
+        self.use_xrf = True
+        self.xrf_type= XRF_TYPE 
+        # print 'in prescan ', self.xrf_type, self.xsp3    
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
                 self.xmap.setFileTemplate('%s%s.%4.4d')
@@ -198,14 +204,15 @@ class TrajectoryScan(object):
                 self.xmap.MCAMode(filename='xmap', npulses=npulses)
                 self.xmap.setFileNumber(1)
             elif self.xrf_type.startswith('xsp'):
+                print 'set up xsp3'
                 self.xsp3.ERASE = 1
                 self.xsp3.NumImages = npulses
-                self.xmap.setFileWriteMode(2)
-                self.xmap.useExternalTrigger()
+                self.xsp3.setFileWriteMode(2)
+
+                self.xsp3.useExternalTrigger()
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
                 self.xsp3.setFileNumber(1)
-
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
             time_per_pixel = scantime/(npulses-1)
@@ -215,6 +222,7 @@ class TrajectoryScan(object):
             self.xrdcam.setFileName('xrd')
 
         time.sleep(0.25)
+        print 'prescan done'
         self.dtime.add('prescan xrf det')            
 
         self.struck.ExternalMode()
@@ -260,13 +268,13 @@ class TrajectoryScan(object):
     def Wait_XMAPWrite(self, irow=0):
         """wait for XMAP to finish writing its data"""
         fnum = irow
-        # print 'Wait for xmap file', self.use_xrf, self.xrf_type
+        print 'Wait for XRF file', self.use_xrf, self.xrf_type
         if self.use_xrf and self.xrf_type.startswith('xmap'):
             # wait for previous netcdf file to be written
             t0 = time.time()
             time.sleep(0.1)
             if not self.xmap.FileWriteComplete():
-                xmap_ok, npix = self.xmap.finish_pixels()
+                xmap_ok, npix = self.xmap.finish_pixels(timeout=5.0)
                 self.rowdata_ok = xmap_ok
                 if not xmap_ok:
                     self.write('Bad data -- XMAP too few pixels')
@@ -300,7 +308,7 @@ class TrajectoryScan(object):
                  dimension=1,
                  pos2=None, start2=0, stop2=1, step2=0.1, **kws):
         self.dtime.clear()
-        print 'In Run Scan ', filename
+        # print 'In Run Scan ', filename
         if pos1 not in self.positioners:
             raise ValueError(' %s is not a trajectory positioner' % pos1)
 
@@ -365,7 +373,7 @@ class TrajectoryScan(object):
         p1_start = start1
         if dir_offset % 2 != 0:
             p1_start = stop1
-
+            
         self.PV(pos1).put(p1_start, wait=False)
         self.dtime.add( 'put #1 done')        
         if dimension > 1:
@@ -730,17 +738,39 @@ class TrajectoryScan(object):
 
     def StartScan(self):
         self.dtime.clear()
-        self.setWorkingDirectory()
-        self.dtime.add(' set working folder')
-        self.check_beam_ok()
 
+        self.dtime.add(' set working folder')
+        subdir = self.setWorkingDirectory()
+        top_path = basepath(self.mapper.basedir)        
+        
+        
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
-        print 'read config '
-        self.use_xrd = self.mapconf.get('xrd_ad', 'use')
-        self.xrdcam = None
+        conf = self.mapconf
+
+        self.use_xrd  = conf.get('xrd_ad', 'use')
+
+        det_path  = os.path.join(top_path, subdir)
+        
         if self.use_xrd:
             self.xrdcam = PerkinElmer_AD(self.mapconf.get('xrd_ad', 'prefix'))
-            print ' using XRD --  ', self.use_xrd
+            self.xrdcam.setFilePath(winpath(det_path))
+
+        # self.xrf_type = conf.get('xrf', 'type').lower()
+        self.xrf_pref = conf.get('xrf', 'prefix').strip()
+        self.use_xrf  = conf.get('xrf', 'use')
+        self.xrf_type = XRF_TYPE
+        if self.use_xrf:
+            if self.xrf_type.startswith('xmap'):
+                self.xmap = MultiXMAP(self.xrf_pref)
+                self.xmap.setFilePath(winpath(det_path))
+                self.xmap.SpectraMode()
+                self.xmap.start()            
+            elif self.xrf_type.startswith('xsp'):
+                self.xsp3 = XSP3('QX4:', # self.xrf_pref,
+                                 fileroot='/home/xspress3/cars5/Data/')
+                self.xsp3.setFilePath(det_path)
+
+        self.check_beam_ok()
         self.dtime.add(' read config')        
         self.mapper.message = 'preparing scan...'
         self.mapper.info  = 'Starting'
