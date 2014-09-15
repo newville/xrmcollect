@@ -138,8 +138,7 @@ class PerkinElmer_AD(epics.Device):
         return self.get("File_%s" % attr, **kw)
 
     def setFilePath(self, pathname):
-        fullpath = os.path.join(self.fileroot, pathname)
-        return self.filePut('FilePath', fullpath)
+        return self.filePut('FilePath', patname)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)

@@ -270,8 +270,7 @@ class MultiXMAP(epics.Device):
         return self.get("%s%s" % (self.filesaver, attr), **kw)
 
     def setFilePath(self, pathname):
-        fullpath = os.path.join(self.fileroot, pathname)
-        return self.filePut('FilePath', fullpath)
+        return self.filePut('FilePath', pathname)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)
