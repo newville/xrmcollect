@@ -23,10 +23,11 @@ from mapper import mapper
 from config import FastMapConfig
 from set_mono_tilt import set_mono_tilt
 
-USE_MONO_CONTROL = True
-#USE_MONO_CONTROL = False 
-XRF_TYPE = 'xmap'
-# XRF_TYPE = 'xsp3'
+# USE_MONO_CONTROL = True
+USE_MONO_CONTROL = False 
+# XRF_TYPE = 'xmap'
+XRF_TYPE = 'xsp3'
+
 SCAN_VERSION = '1.2'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)' 
 ROW_MSG = '(%i, %i/%i/%i)' 
@@ -93,7 +94,7 @@ class TrajectoryScan(object):
                 self.xmap.SpectraMode()
                 self.xmap.start()            
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3 = XSP3('QX4:', # self.xrf_pref,
+                self.xsp3 = XSP3('13QX4:', # self.xrf_pref,
                                 fileroot='/home/xspress3/cars5/Data/')
 
                 
@@ -204,11 +205,9 @@ class TrajectoryScan(object):
                 self.xmap.MCAMode(filename='xmap', npulses=npulses)
                 self.xmap.setFileNumber(1)
             elif self.xrf_type.startswith('xsp'):
-                print 'set up xsp3'
                 self.xsp3.ERASE = 1
-                self.xsp3.NumImages = npulses
+                self.xsp3.NumImages = min(4000, npulses + 1)
                 self.xsp3.setFileWriteMode(2)
-
                 self.xsp3.useExternalTrigger()
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
@@ -243,6 +242,10 @@ class TrajectoryScan(object):
                 self.dtime.add('postscan xmap data written')
                 self.xmap.SpectraMode()
                 self.dtime.add('postscan xmap in Spectra Mode')
+            else:
+                if self.xrf_type.startswith('xsp'):
+                    self.Wait_Xspress3Write(irow=0)
+                
             time.sleep(0.25)
 
         self.setIdle()
@@ -296,6 +299,33 @@ class TrajectoryScan(object):
             xmap_fname = nativepath(self.xmap.getLastFileName())[:-1]
             folder,xmap_fname = os.path.split(xmap_fname)
             prefix, suffix = os.path.splitext(xmap_fname)
+            suffix = suffix.replace('.','')
+            try:
+                fnum = int(suffix)
+            except:
+                fnum = 1
+        return fnum
+
+    def Wait_Xspress3Write(self, irow=0):
+        """wait for Xspress3 to finish writing its data"""
+        fnum = irow
+        if self.use_xrf and self.xrf_type.startswith('xsp'):
+            # wait for previous file writing to complete
+            if not self.xsp3.FileWriteComplete():
+                t0 = time.time()
+                while not self.xsp3.FileWriteComplete() and (time.time()-t0 < 5.0):
+                    time.sleep(0.1)
+                if not self.xsp3.FileWriteComplete():
+                    self.mapper.message = 'Xspress3 File Writing Not Complete!'
+                    self.rowdata_ok = False
+                    time.sleep(0.5)
+                    self.xsp3.stop()
+                    time.sleep(0.5)
+                    self.write('Bad data -- Xspress3 could not complete file writing')
+
+            x_fname = nativepath(self.xsp3.getLastFileName())[:-1]
+            folder, x_fname = os.path.split(x_fname)
+            prefix, suffix = os.path.splitext(x_fname)
             suffix = suffix.replace('.','')
             try:
                 fnum = int(suffix)
@@ -527,9 +557,10 @@ class TrajectoryScan(object):
                 self.xsp3.FileCaptureOn()
                 time.sleep(0.1)
                 self.xsp3.Acquire = 1
-                time.sleep(0.05)
+                time.sleep(0.10)
                 
         self.struck.start()
+        time.sleep(0.10)
 
         if self.use_xrd:
             self.xrdcam.StartStreaming()
@@ -647,7 +678,7 @@ class TrajectoryScan(object):
             xrf_fname = nativepath(self.xmap.getFileNameByIndex(scan_pt))[:-1]
             nxmap = self.Wait_XMAPWrite(irow=scan_pt)
         elif self.use_xrf and self.xrf_type.startswith('xsp'):
-            time.sleep(0.25)
+            nxmap = self.Wait_Xspress3Write(irow=scan_pt)
             
         self.dtime.add('Write: xrf data saved')
 
@@ -766,7 +797,7 @@ class TrajectoryScan(object):
                 self.xmap.SpectraMode()
                 self.xmap.start()            
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3 = XSP3('QX4:', # self.xrf_pref,
+                self.xsp3 = XSP3('13QX4:', # self.xrf_pref,
                                  fileroot='/home/xspress3/cars5/Data/')
                 self.xsp3.setFilePath(det_path)
 
