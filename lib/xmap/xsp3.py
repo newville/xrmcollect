@@ -124,6 +124,9 @@ class XSP3(Device):
     def filePut(self, attr, value, **kw):
         return self.put("%s%s" % (self.filesaver, attr), value, **kw)
 
+    def fileGet(self, attr, **kw):
+        return self.get("%s%s" % (self.filesaver, attr), **kw)
+
     def setFilePath(self, pathname):
         fullpath = os.path.join(self.fileroot, pathname)
         return self.filePut('FilePath', fullpath)
