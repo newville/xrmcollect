@@ -42,8 +42,8 @@ mapdb = 13XRM:map:
 mono = 13IDA:
 struck = 13IDE:SIS1:
 scaler = 13IDE:scaler1
-xmap = 13SDD1:
-fileplugin = netCDF1:
+xmap = 13QX4:
+fileplugin = HDF5:
 basedir = //Volumess/Data/xas_user/2013.2/_Setup
 scandir = Scan00001
 envfile = /Volumes/Data/xas_user/config/IDE_SDD1_ENV.DAT
@@ -54,9 +54,9 @@ flux_val_pv = 13XRM:ION:FluxOut
 flux_min_pv = 13XRM:ION:FluxLowLimit
 [xrf]
 use = True
-type = xmap
-prefix = 13SDD1:
-fileplugin = netCDF1:
+type = xsp3
+prefix = 13QX4:
+fileplugin = HDF5:
 [xrd_ad]
 use = False
 type = PEDET1
