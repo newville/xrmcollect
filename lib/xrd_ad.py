@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import sys
+import sys, os
 import time
 import epics
 
@@ -20,6 +20,7 @@ class PerkinElmer_AD(epics.Device):
 
     def __init__(self,prefix, filesaver='netCDF1:',
                  fileroot='T:/'):
+        self.fileroot = fileroot
         camprefix = prefix + 'cam1:'
         epics.Device.__init__(self, camprefix, delim='',
                               mutable=False,
@@ -28,7 +29,7 @@ class PerkinElmer_AD(epics.Device):
         for p in self.pathattrs:
             pvname = '%s%s%s' % (prefix, filesaver, p)
             self.add_pv(pvname, attr='File_'+p)
-        
+            # print 'FileSaver: ', prefix, filesaver, pvname, p   
 
     def AcquireOffset(self, timeout=10, open_shutter=True):
         """Acquire Offset -- a slightly complex process
@@ -44,8 +45,11 @@ class PerkinElmer_AD(epics.Device):
         4. reset image mode and trigger mode
         5. optionally (by default) open shutter
         """
+        print 'PE Acquire Offset!! '
         self.ShutterMode = 1
         self.ShutterControl = 0
+        time.sleep(1)
+        # print 'ShutterMode to 1, Control to 0'
         image_mode_save = self.ImageMode 
         trigger_mode_save = self.TriggerMode 
         self.ImageMode = 0
@@ -60,7 +64,8 @@ class PerkinElmer_AD(epics.Device):
         time.sleep(1.00)
         self.ImageMode = image_mode_save
         self.TriggerMode = trigger_mode_save
-        time.sleep(1.00)
+        time.sleep(1.00) 
+        #print 'Now reopen shutter? ', open_shutter
         if open_shutter:
             self.ShutterControl = 1
         self.ShutterMode = 0
@@ -89,7 +94,7 @@ class PerkinElmer_AD(epics.Device):
         time.sleep(0.1)
         
         self.TriggerMode = trigger_mode
-        print 'PE Det MultiFrames trigger_mode = ', self.TriggerMode
+        # print 'PE Det MultiFrames trigger_mode = ', self.TriggerMode
         # number of images for collection and streaming
         self.NumImages  = n
         # set filesaver 
@@ -132,14 +137,18 @@ class PerkinElmer_AD(epics.Device):
 
 
     def filePut(self, attr, value, **kw):
+        # print 'FilePut ', attr, value
         return self.put("File_%s" % attr, value, **kw)
 
     def fileGet(self, attr, **kw):
         return self.get("File_%s" % attr, **kw)
 
     def setFilePath(self, pathname):
-        fullpath = os.path.join(self.fileroot, pathname)
+        fullpath = pathname # os.path.join(self.fileroot, pathname)
+        print("SET XRD File Path ", fullpath)
         return self.filePut('FilePath', fullpath)
+        
+        return self.filePut('FilePath', pathname)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)

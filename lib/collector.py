@@ -22,6 +22,9 @@ from config import FastMapConfig
 from set_mono_tilt import set_mono_tilt
 
 # USE_MONO_CONTROL = True
+
+USE_XRD = True
+
 USE_MONO_CONTROL = False
 SCAN_VERSION = '1.2'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)'
@@ -57,7 +60,8 @@ class TrajectoryScan(object):
         scaler       = conf.get('general', 'scaler')
         basedir      = conf.get('general', 'basedir')
         mapdb        = conf.get('general', 'mapdb')
-        self.use_xrd = conf.get('xrd_ad', 'use')
+        # self.use_xrd = conf.get('xrd_ad', 'use')
+        self.use_xrd = USE_XRD
 
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
@@ -92,7 +96,8 @@ class TrajectoryScan(object):
 
         self.xrdcam = None
         if self.use_xrd:
-            self.xrdcam = PerkinElmer_AD(conf('xrd_ad', 'prefix'))
+            print 'USE XRD  ', conf.get('xrd_ad', 'prefix')
+            self.xrdcam = PerkinElmer_AD(conf.get('xrd_ad', 'prefix'))
 
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
@@ -201,10 +206,13 @@ class TrajectoryScan(object):
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
                 self.xsp3.setFileNumber(1)
+        print 'PRESCAN ', self.use_xrd
         if self.use_xrd:
+            
             self.xrdcam.setFilePath(winpath(self.workdir))
             time_per_pixel = scantime/(npulses-1)
             print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
+            print 'PreScan XRD ', self.workdir
             self.xrdcam.SetExposureTime(time_per_pixel)
             self.xrdcam.SetMultiFrames(npulses)
             self.xrdcam.setFileName('xrd')
@@ -549,6 +557,7 @@ class TrajectoryScan(object):
         time.sleep(0.10)
 
         if self.use_xrd:
+            print 'XRD start streaming '
             self.xrdcam.StartStreaming()
 
         self.mapper.PV('Abort').put(0)
@@ -688,6 +697,7 @@ class TrajectoryScan(object):
         rowinfo = self.make_rowinfo(xrf_fname, strk_fname, xps_fname, ypos=ypos)
 
         if self.use_xrd:
+            print 'use XRD finish stream'
             self.xrdcam.FinishStreaming()
 
         n_xps = self.xps.nlines_out
@@ -759,7 +769,7 @@ class TrajectoryScan(object):
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
         conf = self.mapconf
 
-        self.use_xrd  = conf.get('xrd_ad', 'use')
+        self.use_xrd  = USE_XRD # conf.get('xrd_ad', 'use')
 
         det_path  = os.path.join(top_path, subdir)
 
