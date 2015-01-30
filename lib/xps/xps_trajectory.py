@@ -30,7 +30,7 @@ class config:
     timeout = 10
     user    = 'Administrator'
     passwd  = 'Administrator'
-    traj_folder   = 'Public/trajectories'
+    traj_folder   = 'Public/Trajectories'
     group_name    = 'FINE'
     positioners   = 'X Y THETA'
     gather_titles = "# XPS Gathering Data\n#--------------"
