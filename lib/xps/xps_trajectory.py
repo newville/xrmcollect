@@ -1,6 +1,7 @@
 import time
 import sys
 import ftplib
+import logging
 from cStringIO import StringIO
 from string import printable
 from copy import deepcopy
@@ -22,7 +23,7 @@ from XPS_C8_drivers import  XPS
 ##   use a separate thread for ROI and ENV, allow
 ##   XY trajectory to block.
 
-DEFAULT_ACCEL = {'x': 10.0, 'y': 10.0, 't':100.0}
+DEFAULT_ACCEL = {'X': 10.0, 'Y': 10.0, 'THETA': 10.0}
 
 class config:
     host    = '164.54.160.180'
@@ -45,11 +46,6 @@ DiscontinuityAngle = 0.01
 
 Line = %f, %f
 """
-    pvt_template ="""
-%(ramptime)f, %(xramp)f, %(xvelo)f, %(yramp)f, %(yvelo)f, %(tramp)f, %(tvelo)f
-%(scantime)f, %(xdist)f, %(xvelo)f, %(ydist)f, %(yvelo)f, %(tdist)f, %(tvelo)f
-%(ramptime)f, %(xramp)f, %(xzero)f, %(yramp)f, %(xzero)f, %(tramp)f, %(xzero)f
-"""
 
     def __init__(self, host=None, user=None, passwd=None,
                  group=None, positioners=None, mode=None, type=None):
@@ -59,6 +55,9 @@ Line = %f, %f
         self.group_name = group or config.group_name
         self.positioners = positioners or config.positioners
         self.positioners = tuple(self.positioners.replace(',', ' ').split())
+
+        print 'XPS Trajectory, positioners = ', self.positioners
+        self.make_template()
 
         gout = []
         gtit = []
@@ -104,14 +103,30 @@ Line = %f, %f
         self.ftpconn.cwd(config.traj_folder)
         self.ftpconn.storbinary('STOR %s' %fname, StringIO(data))
         self.ftp_disconnect()
-        #print 'Uploaded trajectory ', fname
-        #print data
+        # print 'Uploaded trajectory: ', fname
 
-    def DefineLineTrajectories(self, axis='x', start=0, stop=1, accel=None,
+    def make_template(self):
+        # line1
+        b1 = ['%(ramptime)f']
+        b2 = ['%(scantime)f']
+        b3 = ['%(ramptime)f']
+        for p in self.positioners:
+            b1.append('%%(%sramp)f' % p)
+            b1.append('%%(%svelo)f' % p)
+            b2.append('%%(%sdist)f' % p)
+            b2.append('%%(%svelo)f' % p)
+            b3.append('%%(%sramp)f' % p)
+            b3.append('%(zero)f')
+        b1 = ', '.join(b1)
+        b2 = ', '.join(b2)
+        b3 = ', '.join(b3)
+        self.template = '\n'.join(['', b1, b2, b3])
+
+    def DefineLineTrajectories(self, axis='X', start=0, stop=1, accel=None,
                                step=0.001, scantime=10.0, **kws):
-        """defines 'forward' and 'backward' trajectories for a line scan
-        in PVT Mode"""
-        axis =  axis[0].lower()   # 'x', 'y', 't'
+        """defines 'forward' and 'backward' trajectories for a simple 1 element
+        line scan in PVT Mode"""
+        # axis =  axis.lower()   # 'x', 'y', 't'
         if accel is None:
             accel = DEFAULT_ACCEL[axis]
 
@@ -124,20 +139,20 @@ Line = %f, %f
         ramp     = 0.5 * velo * ramptime
         fore_traj = {'scantime':scantime, 'axis':axis, 'accel': accel,
                      'ramptime': ramptime, 'pixeltime': pixeltime,
-                     'xzero': 0.}
+                     'zero': 0.}
         # print 'Scan Times: ', scantime, pixeltime, (dist)/(step), accel
         this = {'start': start, 'stop': stop, 'step': step,
                 'velo': velo, 'ramp': ramp, 'dist': dist}
         
         for attr in this.keys():
-            for ax in ('x', 'y', 't'):
+            for ax in self.positioners:
                 if ax == axis:
                     fore_traj["%s%s" % (ax, attr)] = this[attr]
                 else:
                     fore_traj["%s%s" % (ax, attr)] = 0.0
 
         back_traj = fore_traj.copy()
-        for ax in ('x', 'y', 't'):
+        for ax in self.positioners:
             for attr in ('velo', 'ramp', 'dist'):
                 back_traj["%s%s" % (ax, attr)] *= -1.0
             back_traj["%sstart" % ax] = this['stop']
@@ -148,11 +163,11 @@ Line = %f, %f
 
         ret = False
         try:
-            self.upload_trajectoryFile('foreward.trj', self.pvt_template % fore_traj)
-            self.upload_trajectoryFile('backward.trj', self.pvt_template % back_traj)
+            self.upload_trajectoryFile('foreward.trj', self.template % fore_traj)
+            self.upload_trajectoryFile('backward.trj', self.template % back_traj)
             ret = True
         except:
-            pass
+            logging.exception("error uploading trajectory")
         return ret
 
     def RunLineTrajectory(self, name='foreward', verbose=False, save=True,
@@ -166,52 +181,46 @@ Line = %f, %f
         traj_file = '%s.trj'  % name
         axis = traj['axis']
         dtime = traj['pixeltime']
-        ramps = (-traj['xramp'], -traj['yramp'], -traj['tramp'])
+
+        ramps = [-traj['%sramp' % p] for p in self.positioners]
 
         self.xps.GroupMoveRelative(self.ssid, 'FINE', ramps)
 
-        # print 'RUN TRAJ ', axis, ramps, traj_file
-        
-        posname = axis.upper()
-        if axis == 'x':
-            start = traj['xstart']
-        elif axis == 'y':
-            start = traj['ystart']
-        elif axis == 't':
-            start = traj['tstart']
-            posname = 'THETA'
-        else:
-            print "Cannot figure out number of pulses for trajectory"
-            return -1
+        print '=====Run Trajectory =  ', traj, axis, ramps, traj_file
         
         self.gather_outputs = []
         gather_titles = []
         for out in config.gather_outputs:
-            self.gather_outputs.append('%s.%s.%s' % (self.group_name, posname, out))
-            gather_titles.append('%s.%s' % (posname, out))
+            self.gather_outputs.append('%s.%s.%s' % (self.group_name, axis, out))
+            gather_titles.append('%s.%s' % (axis, out))
+
         self.gather_titles  = "%s\n#%s\n" % (config.gather_titles,
                                              "  ".join(gather_titles))
-           
-        self.xps.GatheringReset(self.ssid)
-        self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
-        
-        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, config.group_name,
-                                                     2, 3, dtime)
-        ret = self.xps.MultipleAxesPVTVerification(self.ssid, config.group_name, traj_file)
 
-        buffer = ('Always', 'FINE.PVT.TrajectoryPulse',)
-        o = self.xps.EventExtendedConfigurationTriggerSet(self.ssid, buffer,
+        print '==Gather Titles== ',  self.gather_titles
+        print '==Gather Outputs==',  self.gather_outputs
+
+        ret = self.xps.GatheringReset(self.ssid)
+        self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
+        print " Group Name ", self.group_name
+
+        ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, self.group_name,
+                                                     1, 3, dtime)
+        ret = self.xps.MultipleAxesPVTVerification(self.ssid, self.group_name, traj_file)
+
+        buffer = ('Always', '%s.PVT.TrajectoryPulse' % self.group_name,)
+        ret = self.xps.EventExtendedConfigurationTriggerSet(self.ssid, buffer,
                                                           ('0','0'), ('0','0'),
                                                           ('0','0'), ('0','0'))
 
-        o = self.xps.EventExtendedConfigurationActionSet(self.ssid,  ('GatheringOneData',),
+        ret = self.xps.EventExtendedConfigurationActionSet(self.ssid,  ('GatheringOneData',),
                                                          ('',), ('',),('',),('',))
 
         eventID, m = self.xps.EventExtendedStart(self.ssid)
 
         ret = self.xps.MultipleAxesPVTExecution(self.ssid, self.group_name, traj_file, 1)
-        o = self.xps.EventExtendedRemove(self.ssid, eventID)
-        o = self.xps.GatheringStop(self.ssid)
+        ret = self.xps.EventExtendedRemove(self.ssid, eventID)
+        ret = self.xps.GatheringStop(self.ssid)
 
         npulses = 0
         if save:
@@ -261,6 +270,13 @@ Line = %f, %f
             npulses = self.SaveResults(outfile, verbose=verbose)
         return npulses
 
+    def ReadGatheringPulses(self):
+        ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+        if npulses < 1:
+            time.sleep(1)
+            ret, npulses, nx = self.xps.GatheringCurrentNumberGet(self.ssid)
+        return npulses
+    
     def SaveResults(self,  fname, verbose=False):
         """read gathering data from XPS
         """
