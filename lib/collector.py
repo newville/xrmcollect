@@ -184,6 +184,7 @@ class TrajectoryScan(object):
         """ put all pieces (trajectory, struck, xmap) into
         the proper modes for trajectory scan"""
         self.npulses = npulses
+        self.mapper.setTime()
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
                 self.xmap.setFileTemplate('%s%s.%4.4d')
@@ -221,6 +222,7 @@ class TrajectoryScan(object):
     def postscan(self):
         """ put all pieces (trajectory, struck, xmap) into
         the non-trajectory scan mode"""
+        self.mapper.setTime()
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
                 self.Wait_XMAPWrite(irow=0)
@@ -456,7 +458,6 @@ class TrajectoryScan(object):
             if irow % 5 == 0:
                 self.write('row %i/%i' % (irow, npts2))
             self.dtime.add('xrf data saved')
-
             if not self.rowdata_ok:
                 self.write('Bad data for row: redoing this row')
                 irow = irow - 1
@@ -465,6 +466,7 @@ class TrajectoryScan(object):
                 self.MasterFile.write(rowinfo)
                 self.MasterFile.flush()
 
+            self.mapper.setTime()
             self.mapper.setNrow(irow)
             if self.state == 'abort':
                 self.mapper.message = 'Map aborted!'
@@ -549,6 +551,7 @@ class TrajectoryScan(object):
 
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
+        self.mapper.setTime()
 
         # self.write('Ready to start trajectory')
         scan_thread = Thread(target=self.xps.RunLineTrajectory,
@@ -583,10 +586,14 @@ class TrajectoryScan(object):
 
         # now wait for scanning thread to complete
         scan_thread.join()
+        beacon_time = time.time()
         while scan_thread.isAlive() and time.time()-t0 < scantime+5.0:
             epics.poll()
             time.sleep(0.002)
-
+            if time.time() - beacon_time > 5.0:
+                self.mapper.setTime()
+                beacon_time = time.time()
+ 
         # wait for Xspress3 to finish
         if self.use_xrf and self.xrf_type.startswith('xsp'):
             if self.xsp3.DetectorState_RBV != 0:
@@ -744,6 +751,7 @@ class TrajectoryScan(object):
         self.state = self.mapper.info = 'idle'
         self.mapper.ClearAbort()
         self.mapper.status = 0
+        self.mapper.setTime()        
 
     def StartScan(self):
         self.dtime.clear()
