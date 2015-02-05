@@ -18,22 +18,22 @@ conf_sects = {'general': {},
                        'floats':('start1','stop1', 'step1','time1',
                                  'start2','stop2', 'step2')}}
 
-__c = (('general', ('mapdb', 'struck', 'scaler', 'xmap', 'mono',
-                    'fileplugin', 'basedir', 'scandir', 'envfile')),
+__c = (('general', ('mapdb', 'struck', 'scaler', 'mono',
+                    'basedir', 'scandir', 'envfile')),
        ('xps',  ('host', 'user', 'passwd', 'group', 'positioners')),
        ('scan', ('filename', 'dimension', 'comments', 'pos1', 'start1', 'stop1',
                  'step1', 'time1', 'pos2', 'start2', 'stop2', 'step2')),
        ('beam_ok', ('shutter_open', 'shutter_status', 'flux_val_pv', 'flux_min_pv')),
-       ('xrd_ad',   ('use', 'type', 'prefix', 'plugin')),
-       ('image_ad', ('use', 'type', 'prefix', 'plugin')),
-       ('xrf',      ('use', 'type', 'prefix', 'plugin')),
+       ('xrd_ad',   ('use', 'type', 'prefix', 'fileplugin')),
+       ('image_ad', ('use', 'type', 'prefix', 'fileplugin')),
+       ('xrf',      ('use', 'type', 'prefix', 'fileplugin')),
        ('fast_positioners', None),
        ('slow_positioners', None))
 
 conf_objs = OrderedDict(__c)
         
-conf_files = ('MapDefault.ini',
-              '/Volumes/Data/xas_user/config/FastMap/Default.ini')
+conf_files = ('Default.ini',
+              '/cars5/Data/xas_user/config/FastMap/Default.ini')
 
 
 default_conf = """# FastMap configuration file (default)
@@ -44,9 +44,9 @@ struck = 13IDE:SIS1:
 scaler = 13IDE:scaler1
 xmap = 13QX4:
 fileplugin = HDF5:
-basedir = //Volumess/Data/xas_user/2013.2/_Setup
+basedir = /cars5/Data/xas_user/2013.2/_Setup
 scandir = Scan00001
-envfile = /Volumes/Data/xas_user/config/IDE_SDD1_ENV.DAT
+envfile = /cars5/Data/xas_user/config/IDE_QX4_ENV.DAT
 [beam_ok]
 shutter_open   = 13IDA:OpenFEShutter.PROC & 13IDA:OpenEShutter.PROC
 shutter_status = 13IDA:eps_mbbi25   & 13IDA:eps_mbbi27

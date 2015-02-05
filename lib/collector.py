@@ -9,7 +9,8 @@ from epics import caput
 from epics.devices.struck import Struck
 
 from .utils import debugtime
-from .io.file_utils import nativepath, winpath, fix_filename, increment_filename, basepath
+from .io.file_utils import (nativepath, winpath, fix_filename,
+                            increment_filename, basepath)
 from .io.escan_writer import EscanWriter
 
 from .xps.xps_trajectory import XPSTrajectory
@@ -23,14 +24,12 @@ from set_mono_tilt import set_mono_tilt
 
 # USE_MONO_CONTROL = True
 
-USE_XRD = True
-
-USE_MONO_CONTROL = False
+USE_MONO_CONTROL = True
 SCAN_VERSION = '1.2'
 ROW_MSG = 'Row %i complete, npts (XPS, SIS, XMAP) = (%i, %i, %i)'
 ROW_MSG = '(%i, %i/%i/%i)'
 
-POSITIONER_OFFSETS = {'x':1, 'y':0, 't':0}
+POSITIONER_OFFSETS = {'X':1, 'Y':0, 'THETA':0}
 
 def fix_range(start=0,stop=1,step=0.1, addstep=False):
     """returns (npoints,start,stop,step) for a trajectory
@@ -55,14 +54,20 @@ class TrajectoryScan(object):
     def __init__(self, xrf_prefix='13SDD1:', configfile=None):
         self._pvs = {}
         self.state = 'idle'
-        conf = self.mapconf = FastMapConfig(configfile)
-        struck       = conf.get('general', 'struck')
-        scaler       = conf.get('general', 'scaler')
-        basedir      = conf.get('general', 'basedir')
-        mapdb        = conf.get('general', 'mapdb')
-        # self.use_xrd = conf.get('xrd_ad', 'use')
-        self.use_xrd = USE_XRD
+        self.xmap = None
+        self.xsp3 = None
+        self.xrdcam = None
 
+        conf = self.mapconf = FastMapConfig(configfile)
+        struck        = conf.get('general', 'struck')
+        scaler        = conf.get('general', 'scaler')
+        basedir       = conf.get('general', 'basedir')
+        mapdb         = conf.get('general', 'mapdb')
+        self.use_xrd  = conf.get('xrd_ad', 'use')
+        self.use_xrf  = conf.get('xrf',   'use')
+        self.xrf_type = conf.get('xrf', 'type')
+        self.xrf_pref = conf.get('xrf', 'prefix')
+        
         self.mapper = mapper(prefix=mapdb)
         self.subdir_index = 0
         self.scan_t0  = time.time()
@@ -77,26 +82,14 @@ class TrajectoryScan(object):
         self.struck = Struck(struck, scaler=scaler)
         self.struck.read_all_mcas()
 
-        self.xmap = None
-        self.xsp3 = None
-        self.use_xrf  = True
-
-        self.xrf_type = 'xmap'
-        self.xrf_pref = xrf_prefix
-        if xrf_prefix.startswith('13QX4:'):
-            self.xrf_type = 'xsp3'
-
         print 'Using xrf type/prefix= ', self.xrf_type, self.xrf_pref
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
                 self.xmap = MultiXMAP(self.xrf_pref)
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3 = XSP3(self.xrf_pref,
-                                 fileroot='/home/xspress3/cars5/Data/')
+                self.xsp3 = XSP3(self.xrf_pref, fileroot='/T/')
 
-        self.xrdcam = None
         if self.use_xrd:
-            print 'USE XRD  ', conf.get('xrd_ad', 'prefix')
             self.xrdcam = PerkinElmer_AD(conf.get('xrd_ad', 'prefix'))
 
         self.positioners = {}
@@ -106,7 +99,6 @@ class TrajectoryScan(object):
         self.mapper.add_callback('Abort', self.onAbort)
         self.mapper.add_callback('basedir', self.onDirectoryChange)
         self.prepare_beam_ok()
-
 
     def prepare_beam_ok(self):
         conf = self.mapconf.get('beam_ok')
@@ -206,13 +198,11 @@ class TrajectoryScan(object):
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
                 self.xsp3.setFileNumber(1)
-        print 'PRESCAN ', self.use_xrd
+
         if self.use_xrd:
-            
             self.xrdcam.setFilePath(winpath(self.workdir))
             time_per_pixel = scantime/(npulses-1)
             print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
-            print 'PreScan XRD ', self.workdir
             self.xrdcam.SetExposureTime(time_per_pixel)
             self.xrdcam.SetMultiFrames(npulses)
             self.xrdcam.setFileName('xrd')
@@ -227,8 +217,6 @@ class TrajectoryScan(object):
 
         self.ROI_Written = False
         self.ENV_Written = False
-        print 'prescan done'
-        self.dtime.add('prescan done')
 
     def postscan(self):
         """ put all pieces (trajectory, struck, xmap) into
@@ -382,7 +370,7 @@ class TrajectoryScan(object):
                   filename=self.mapper.filename, filenumber=0,
                   dimension=dimension, npulses=npts1-1, scan_pt=1)
 
-        axis1 = self.mapconf.get('fast_positioners', pos1).lower()
+        axis1 = self.mapconf.get('fast_positioners', pos1).upper()
 
         linescan = dict(start=start1, stop=stop1, step=step1,
                         axis=axis1, scantime=scantime, accel=accel)
@@ -395,19 +383,17 @@ class TrajectoryScan(object):
         self.dtime.add('trajectory defined')
 
         # move to starting position
-        dir_offset += POSITIONER_OFFSETS[axis1[0]]
+        dir_offset += POSITIONER_OFFSETS[axis1]
         p1_start = start1
         if dir_offset % 2 != 0:
             p1_start = stop1
 
         self.PV(pos1).put(p1_start, wait=False)
-        print 'Put Positioner 1 to start'
         self.dtime.add( 'put #1 done')
         if dimension > 1:
             self.PV(pos2).put(start2, wait=False)
         self.dtime.add('put positioners to starting positions')
         self.prescan(**kw)
-        print 'prescan done'
         self.dtime.add( 'prescan done')
         self.PV(pos1).put(p1_start, wait=True)
         if dimension > 1:
@@ -429,7 +415,7 @@ class TrajectoryScan(object):
             dirx = (dir_offset + irow) % 2
             traj, p1_this, p1_next = [('backward', stop1, start1),
                                       ('foreward', start1, stop1)][dirx]
-            # print 'ROW ' , irow, dir_offset, dirx, traj, p1_this, p1_next
+
             if dimension > 1:
                 self.mapper.info =  'Row %i / %i (%s)' % (irow,npts2,traj)
             else:
@@ -469,12 +455,12 @@ class TrajectoryScan(object):
                                                      npts=npts1)
             if irow % 5 == 0:
                 self.write('row %i/%i' % (irow, npts2))
-            self.dtime.add('xmap saved')
-            self.check_beam_ok()
+            self.dtime.add('xrf data saved')
 
             if not self.rowdata_ok:
                 self.write('Bad data for row: redoing this row')
                 irow = irow - 1
+                self.PV(pos1).put(p1_this, wait=False)
             else:
                 self.MasterFile.write(rowinfo)
                 self.MasterFile.flush()
@@ -483,7 +469,8 @@ class TrajectoryScan(object):
             if self.state == 'abort':
                 self.mapper.message = 'Map aborted!'
                 break
-            self.dtime.add('all done')
+            self.check_beam_ok()
+            self.dtime.add('row done')
             # self.dtime.show(clear=True)
         # print 'Restore positions..'
         self.restore_positions()
@@ -501,8 +488,8 @@ class TrajectoryScan(object):
         flux_val = float(self.flux_val_pv.get())
         if flux_val > flux_min:
             return
-        ##
-        ## if we get here, we'll want to redo the previous row
+
+        # if we get here, we'll want to redo the previous row
         self.rowdata_ok = False
         print 'Flux low... checking shutters'
         def shutters_open():
@@ -769,7 +756,7 @@ class TrajectoryScan(object):
         self.mapconf.Read(os.path.abspath(self.mapper.scanfile) )
         conf = self.mapconf
 
-        self.use_xrd  = USE_XRD # conf.get('xrd_ad', 'use')
+        self.use_xrd  = conf.get('xrd_ad', 'use')
 
         det_path  = os.path.join(top_path, subdir)
 
