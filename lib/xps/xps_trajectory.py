@@ -56,7 +56,6 @@ Line = %f, %f
         self.positioners = positioners or config.positioners
         self.positioners = tuple(self.positioners.replace(',', ' ').split())
 
-        print 'XPS Trajectory, positioners = ', self.positioners
         self.make_template()
 
         gout = []
@@ -126,7 +125,7 @@ Line = %f, %f
                                step=0.001, scantime=10.0, **kws):
         """defines 'forward' and 'backward' trajectories for a simple 1 element
         line scan in PVT Mode"""
-        # axis =  axis.lower()   # 'x', 'y', 't'
+        axis =  axis.upper()
         if accel is None:
             accel = DEFAULT_ACCEL[axis]
 
@@ -186,7 +185,7 @@ Line = %f, %f
 
         self.xps.GroupMoveRelative(self.ssid, 'FINE', ramps)
 
-        print '=====Run Trajectory =  ', traj, axis, ramps, traj_file
+        # print '=====Run Trajectory =  ', traj, axis, ramps, traj_file
         
         self.gather_outputs = []
         gather_titles = []
@@ -197,12 +196,12 @@ Line = %f, %f
         self.gather_titles  = "%s\n#%s\n" % (config.gather_titles,
                                              "  ".join(gather_titles))
 
-        print '==Gather Titles== ',  self.gather_titles
-        print '==Gather Outputs==',  self.gather_outputs
+        # print '==Gather Titles== ',  self.gather_titles
+        # print '==Gather Outputs==',  self.gather_outputs
 
         ret = self.xps.GatheringReset(self.ssid)
         self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
-        print " Group Name ", self.group_name
+        # print " Group Name ", self.group_name
 
         ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, self.group_name,
                                                      1, 3, dtime)
