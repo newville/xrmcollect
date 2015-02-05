@@ -5,7 +5,7 @@ from lib import collector
 from optparse import OptionParser
 
 import sys
-xrf_prefix= '13SDD1:'
+xrf_prefix= '13QX4:'
 if len(sys.argv) > 1:
     xrf_prefix = sys.argv[1]
 
