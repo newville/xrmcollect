@@ -201,10 +201,9 @@ Line = %f, %f
 
         ret = self.xps.GatheringReset(self.ssid)
         self.xps.GatheringConfigurationSet(self.ssid, self.gather_outputs)
-        # print " Group Name ", self.group_name
 
         ret = self.xps.MultipleAxesPVTPulseOutputSet(self.ssid, self.group_name,
-                                                     1, 3, dtime)
+                                                     2, 3, dtime)
         ret = self.xps.MultipleAxesPVTVerification(self.ssid, self.group_name, traj_file)
 
         buffer = ('Always', '%s.PVT.TrajectoryPulse' % self.group_name,)
