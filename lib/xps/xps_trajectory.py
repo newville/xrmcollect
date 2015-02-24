@@ -23,7 +23,9 @@ from XPS_C8_drivers import  XPS
 ##   use a separate thread for ROI and ENV, allow
 ##   XY trajectory to block.
 
-DEFAULT_ACCEL = {'X': 10.0, 'Y': 10.0, 'THETA': 10.0}
+MONO_ACCEL = {'X': 10.0, 'Y': 10.0, 'THETA': 100.0}
+
+DEFAULT_ACCEL = {'X': 20.0, 'Y': 20.0, 'THETA': 160.0}
 
 class config:
     host    = '164.54.160.180'
@@ -142,7 +144,6 @@ Line = %f, %f
         # print 'Scan Times: ', scantime, pixeltime, (dist)/(step), accel
         this = {'start': start, 'stop': stop, 'step': step,
                 'velo': velo, 'ramp': ramp, 'dist': dist}
-        
         for attr in this.keys():
             for ax in self.positioners:
                 if ax == axis:
