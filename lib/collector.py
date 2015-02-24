@@ -50,7 +50,6 @@ def fix_range(start=0,stop=1,step=0.1, addstep=False):
     return (npts,start,stop,step)
 
 class TrajectoryScan(object):
-    subdir_fmt = 'scan%4.4i'
     def __init__(self, xrf_prefix='13SDD1:', configfile=None):
         self._pvs = {}
         self.state = 'idle'
@@ -69,7 +68,6 @@ class TrajectoryScan(object):
         self.xrf_pref = conf.get('xrf', 'prefix')
         
         self.mapper = mapper(prefix=mapdb)
-        self.subdir_index = 0
         self.scan_t0  = time.time()
         self.Connect_ENV_PVs()
 
@@ -143,26 +141,15 @@ class TrajectoryScan(object):
             self.write('Cannot chdir to %s' % basedir)
 
         fname = fix_filename(self.mapper.filename)
-        dirname = fname
-        ext = 1
-        if '.' in fname:
-            dirname, ext = fname.split('.')
-        if len(dirname) > 45:
-            dirname = dirname[:45]
-        subdir = "%s_%s" % (dirname, ext)
-        if os.path.exists(subdir):
-            i = 0
-            while i < 10000:
-                i = i + 1
-                newdir = "%s_%3.3i" % (dirname, i)
-                if not os.path.exists(newdir):
-                    subdir = newdir
-                    break
-
-        try:
-            os.mkdir(subdir)
-        except OSError:
-            pass
+        subdir = fname + '_rawmap'
+        counter = 0
+        while os.path.exists(subdir) and counter < 9999:
+            fname = increment_filename(fname)
+            subdir = fname + '_rawmap'
+            counter += 1
+                
+        os.mkdir(subdir)
+        self.mapper.filename = fname
 
         # write h5 file stub (with name of folder) for viewing program
         h5fname = os.path.abspath(os.path.join(basedir, "%s.h5" % fname))
@@ -568,7 +555,7 @@ class TrajectoryScan(object):
             if self.xrf_type.startswith('xsp'):
                 xrfdet = self.xsp3
             fout = os.path.join(self.workdir, 'ROI.dat')
-            print(" SAVE ROI.dat to ", fout, xrfdet)
+            # print(" SAVE ROI.dat to ", fout, xrfdet)
             if True: # try:
                 fh = open(fout, 'w')
                 fh.write('\n'.join(xrfdet.roi_calib_info()))
@@ -677,6 +664,7 @@ class TrajectoryScan(object):
             counter = counter + 1
             try:
                 nsmcas, nspts = self.struck.saveMCAdata(fname=strk_fname)
+                n_sis = nspts
                 wrote_struck = (self.struck.CurrentChannel - nspts) < 2
             except:
                 print 'trouble saving struck data.. will retry'
@@ -801,7 +789,8 @@ class TrajectoryScan(object):
             scan['pos2'] = None
             scan['start2'] = 0
             scan['stop2'] = 0
-
+        scan['filename'] = self.mapper.filename
+        # print 'Scan FileName is ', scan['filename']
         # self.dtime.show()
         self.run_scan(**scan)
         self.MasterFile.close()
