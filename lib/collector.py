@@ -542,6 +542,7 @@ class TrajectoryScan(object):
         time.sleep(0.10)
 
         if self.use_xrd:
+            self.xrdcam.setFileNumber(scan_pt)
             self.xrdcam.StartStreaming()
 
         self.mapper.PV('Abort').put(0)

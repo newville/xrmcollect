@@ -101,8 +101,7 @@ class PerkinElmer_AD(epics.Device):
         self.filePut('NumCapture',    n)
         self.filePut('EnableCallbacks', 1)
         self.filePut('FileNumber',    1)
-        self.filePut('AutoIncrement', 1)
-        time.sleep(2.0)
+        time.sleep(1.0)
 
     def StartStreaming(self):
         """start streamed acquisition to save with 
