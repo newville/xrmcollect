@@ -11,7 +11,8 @@ class PerkinElmer_AD(epics.Device):
 
     pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
                  'FileName', 'FileNumber', 'FullFileName_RBV',
-                 'Capture',  'Capture_RBV', 'NumCapture', 'WriteFile_RBV',
+                 'Capture',  'Capture_RBV', 'WriteFile_RBV',
+                 'NumCapture', 'NumCapture_RBV', 'NumCaptured_RBV',
                  'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
                  'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
 
@@ -29,7 +30,6 @@ class PerkinElmer_AD(epics.Device):
         for p in self.pathattrs:
             pvname = '%s%s%s' % (prefix, filesaver, p)
             self.add_pv(pvname, attr='File_'+p)
-            # print 'FileSaver: ', prefix, filesaver, pvname, p   
 
     def AcquireOffset(self, timeout=10, open_shutter=True):
         """Acquire Offset -- a slightly complex process
@@ -45,10 +45,10 @@ class PerkinElmer_AD(epics.Device):
         4. reset image mode and trigger mode
         5. optionally (by default) open shutter
         """
-        print 'PE Acquire Offset!! '
+        print 'Acquire Offset for PerkinElmer Detector'
         self.ShutterMode = 1
         self.ShutterControl = 0
-        time.sleep(1)
+        time.sleep(1.0)
         # print 'ShutterMode to 1, Control to 0'
         image_mode_save = self.ImageMode 
         trigger_mode_save = self.TriggerMode 
@@ -64,12 +64,12 @@ class PerkinElmer_AD(epics.Device):
         time.sleep(1.00)
         self.ImageMode = image_mode_save
         self.TriggerMode = trigger_mode_save
-        time.sleep(1.00) 
+        time.sleep(1.0)
         #print 'Now reopen shutter? ', open_shutter
         if open_shutter:
             self.ShutterControl = 1
         self.ShutterMode = 0
-        time.sleep(1.00)
+        time.sleep(1.0)
         
     def SetExposureTime(self, t, open_shutter=True):
         "set exposure time, re-acquire offset correction"
@@ -111,11 +111,10 @@ class PerkinElmer_AD(epics.Device):
         self.ShutterMode = 0        
         self.filePut('AutoSave', 1)
         self.filePut('FileWriteMode', 2)  # stream
-        time.sleep(0.05)
+        time.sleep(0.2)
         self.filePut('Capture', 1)  # stream
         self.Acquire = 1
-        time.sleep(0.25)
-
+        time.sleep(0.75)
 
     def FinishStreaming(self, timeout=5.0):
         """start streamed acquisition to save with 
@@ -133,11 +132,12 @@ class PerkinElmer_AD(epics.Device):
             while capture_on==1 and time.time() - t0 < timeout:
                 time.sleep(0.05)
                 capture_on = self.fileGet('Capture_RBV')
-        time.sleep(0.50)
-
+        time.sleep(0.25)
+        num_requested = self.fileGet('NumCapture_RBV')
+        num_received  = self.fileGet('NumCaptured_RBV')
+        return num_requested == num_received
 
     def filePut(self, attr, value, **kw):
-        # print 'FilePut ', attr, value
         return self.put("File_%s" % attr, value, **kw)
 
     def fileGet(self, attr, **kw):
@@ -145,7 +145,6 @@ class PerkinElmer_AD(epics.Device):
 
     def setFilePath(self, pathname):
         fullpath = pathname # os.path.join(self.fileroot, pathname)
-        print("SET XRD File Path ", fullpath)
         return self.filePut('FilePath', fullpath)
         
         return self.filePut('FilePath', pathname)

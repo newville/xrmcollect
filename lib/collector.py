@@ -88,7 +88,9 @@ class TrajectoryScan(object):
                 self.xsp3 = XSP3(self.xrf_pref, fileroot='/T/')
 
         if self.use_xrd:
-            self.xrdcam = PerkinElmer_AD(conf.get('xrd_ad', 'prefix'))
+            filesaver = conf.get('xrd_ad', 'fileplugin')
+            prefix = conf.get('xrd_ad', 'prefix')
+            self.xrdcam = PerkinElmer_AD(prefix, filesaver=filesaver)
 
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
@@ -186,11 +188,15 @@ class TrajectoryScan(object):
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
                 self.xsp3.setFileNumber(1)
+                time.sleep(0.1)
+                self.xsp3.UPDATE = 1
+                self.xsp3.ERASE = 1
+                time.sleep(0.1)
 
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
             time_per_pixel = scantime/(npulses-1)
-            print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
+            # print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
             self.xrdcam.SetExposureTime(time_per_pixel)
             self.xrdcam.SetMultiFrames(npulses)
             self.xrdcam.setFileName('xrd')
@@ -221,7 +227,10 @@ class TrajectoryScan(object):
                     self.Wait_Xspress3Write(irow=0)
 
             time.sleep(0.25)
-
+            if self.use_xrd:
+                self.xrdcam.filePut('EnableCallbacks', 0)
+                self.xrdcam.ImageMode = 2
+                self.xrdcam.TriggerMode = 0
         self.setIdle()
         self.dtime.add('postscan done')
 
@@ -245,7 +254,7 @@ class TrajectoryScan(object):
     def Wait_XMAPWrite(self, irow=0):
         """wait for XMAP to finish writing its data"""
         fnum = irow
-        print 'Wait for XRF file', self.use_xrf, self.xrf_type
+        # print 'Wait for XRF file', self.use_xrf, self.xrf_type
         if self.use_xrf and self.xrf_type.startswith('xmap'):
             # wait for previous netcdf file to be written
             t0 = time.time()
@@ -267,7 +276,7 @@ class TrajectoryScan(object):
                     time.sleep(0.5)
                     self.xmap.MCAMode(filename='xmap', npulses=self.npulses)
                     time.sleep(0.5)
-                    print 'could not complete file writing!'
+                    print 'XMAP could not complete file writing!'
                     self.write('Bad data -- XMAP could not complete file writing')
                     break
             xmap_fname = nativepath(self.xmap.getLastFileName())[:-1]
@@ -533,7 +542,6 @@ class TrajectoryScan(object):
         time.sleep(0.10)
 
         if self.use_xrd:
-            print 'XRD start streaming '
             self.xrdcam.StartStreaming()
 
         self.mapper.PV('Abort').put(0)
@@ -679,8 +687,10 @@ class TrajectoryScan(object):
         rowinfo = self.make_rowinfo(xrf_fname, strk_fname, xps_fname, ypos=ypos)
 
         if self.use_xrd:
-            print 'use XRD finish stream'
-            self.xrdcam.FinishStreaming()
+            if not self.xrdcam.FinishStreaming():
+                self.write('Bad data: not enough XRD captures: %i' %
+                           self.xrdcam.fileGet('NumCaptured_RBV'))
+                self.rowdata_ok = False
 
         n_xps = self.xps.nlines_out
         n_xrf = -1
@@ -757,7 +767,9 @@ class TrajectoryScan(object):
         det_path  = os.path.join(top_path, subdir)
 
         if self.use_xrd:
-            self.xrdcam = PerkinElmer_AD(self.mapconf.get('xrd_ad', 'prefix'))
+            filesaver = conf.get('xrd_ad', 'fileplugin')
+            prefix = conf.get('xrd_ad', 'prefix')
+            self.xrdcam = PerkinElmer_AD(prefix, filesaver=filesaver)
             self.xrdcam.setFilePath(winpath(det_path))
 
         if self.use_xrf:
