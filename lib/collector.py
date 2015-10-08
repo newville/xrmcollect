@@ -14,7 +14,7 @@ from .io.file_utils import (nativepath, winpath, fix_filename,
 from .io.escan_writer import EscanWriter
 
 from .xps.xps_trajectory import XPSTrajectory
-from .xrd_ad import PerkinElmer_AD
+from .xrd_ad import PerkinElmer_AD, Dexela_AD
 from .xmap import MultiXMAP
 from .xmap.xsp3 import XSP3
 
@@ -58,6 +58,7 @@ class TrajectoryScan(object):
         self.xrdcam = None
 
         conf = self.mapconf = FastMapConfig(configfile)
+        print(" Using Configfile : ", configfile)
         struck        = conf.get('general', 'struck')
         scaler        = conf.get('general', 'scaler')
         basedir       = conf.get('general', 'basedir')
@@ -89,8 +90,11 @@ class TrajectoryScan(object):
 
         if self.use_xrd:
             filesaver = conf.get('xrd_ad', 'fileplugin')
-            prefix = conf.get('xrd_ad', 'prefix')
+            prefix    = conf.get('xrd_ad', 'prefix')
+            xrd_type  = conf.get('xrd_ad', 'type')
+            print(" Use XRD ", prefix, xrd_type, filesaver)            
             self.xrdcam = PerkinElmer_AD(prefix, filesaver=filesaver)
+            # self.xrdcam = Dexela_AD(prefix, filesaver=filesaver)
 
         self.positioners = {}
         for pname in conf.get('slow_positioners'):
@@ -195,6 +199,11 @@ class TrajectoryScan(object):
 
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
+            parent, subfolder  = os.path.split(self.workdir)
+
+            # xrdpath = os.path.join("C:\\Data\\xas_user\\", subfolder)
+            # xrdpath = "C:\\Data\\xas_user\\"
+            # self.xrdcam.setFilePath(winpath(xrdpath))            
             time_per_pixel = scantime/(npulses-1)
             # print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
             self.xrdcam.SetExposureTime(time_per_pixel)
@@ -205,8 +214,11 @@ class TrajectoryScan(object):
         self.dtime.add('prescan xrf det')
 
         self.struck.ExternalMode()
-        self.struck.put('PresetReal', 0.0)
+        maxchan = self.struck.get('MaxChannels')
+        nstruck = min(maxchan, max(100, npulses+50))
+        self.struck.put('NuseAll',   nstruck)
         self.struck.put('Prescale',   1.0)
+        self.struck.put('PresetReal', 0.0)
         self.dtime.add('prescan struck')
 
         self.ROI_Written = False
@@ -538,12 +550,12 @@ class TrajectoryScan(object):
                 self.xsp3.Acquire = 1
                 time.sleep(0.10)
 
-        self.struck.start()
-        time.sleep(0.10)
-
         if self.use_xrd:
             self.xrdcam.setFileNumber(scan_pt)
             self.xrdcam.StartStreaming()
+
+        self.struck.start()
+        time.sleep(0.10)
 
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
@@ -688,9 +700,10 @@ class TrajectoryScan(object):
         rowinfo = self.make_rowinfo(xrf_fname, strk_fname, xps_fname, ypos=ypos)
 
         if self.use_xrd:
-            if not self.xrdcam.FinishStreaming():
+            if not self.xrdcam.FinishStreaming(timeout=15.0):
                 self.write('Bad data: not enough XRD captures: %i' %
                            self.xrdcam.fileGet('NumCaptured_RBV'))
+                self.xrdcam.ResetStreaming()
                 self.rowdata_ok = False
 
         n_xps = self.xps.nlines_out
@@ -770,8 +783,11 @@ class TrajectoryScan(object):
         if self.use_xrd:
             filesaver = conf.get('xrd_ad', 'fileplugin')
             prefix = conf.get('xrd_ad', 'prefix')
+            xrd_type  = conf.get('xrd_ad', 'type')
+            print(" Use XRD ", prefix, xrd_type, filesaver)
             self.xrdcam = PerkinElmer_AD(prefix, filesaver=filesaver)
-            self.xrdcam.setFilePath(winpath(det_path))
+            # self.xrdcam = Dexela_AD(prefix, filesaver=filesaver)
+            # self.xrdcam.setFilePath(winpath("C:\\Data\\xas_user\\"))
 
         if self.use_xrf:
             if self.xrf_type.startswith('xmap'):
