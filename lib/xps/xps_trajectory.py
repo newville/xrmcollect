@@ -25,7 +25,8 @@ from XPS_C8_drivers import  XPS
 
 MONO_ACCEL = {'X': 10.0, 'Y': 10.0, 'THETA': 100.0}
 
-DEFAULT_ACCEL = {'X': 20.0, 'Y': 20.0, 'THETA': 160.0}
+DEFAULT_ACCEL = {'X': 20.0, 'Y': 20.0, 'THETA': 300.0}
+MAX_VELO      = {'X': 10.0, 'Y': 10.0, 'THETA':  80.0}
 
 class config:
     host    = '164.54.160.180'
@@ -136,12 +137,15 @@ Line = %f, %f
         scantime = abs(scantime)
         pixeltime = scantime * step / abs(dist)
         velo      = dist / scantime
+        if velo > MAX_VELO[axis]:
+            velo = MAX_VELO[axis]
         ramptime = abs(velo / accel)
         ramp     = 0.5 * velo * ramptime
         fore_traj = {'scantime':scantime, 'axis':axis, 'accel': accel,
                      'ramptime': ramptime, 'pixeltime': pixeltime,
                      'zero': 0.}
         # print 'Scan Times: ', scantime, pixeltime, (dist)/(step), accel
+        # print 'ACCEl ' , accel, velo, ramptime, ramp
         this = {'start': start, 'stop': stop, 'step': step,
                 'velo': velo, 'ramp': ramp, 'dist': dist}
         for attr in this.keys():
