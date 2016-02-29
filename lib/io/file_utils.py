@@ -6,6 +6,7 @@ from random import seed, randrange
 
 WIN_BASE = 'T:\\'
 UNIX_BASE = '/cars5/Data/'
+DARWIN_BASE = '/Volumes/Data/'
 
 BAD_FILECHARS = ';~,`!%$@?*#:"/|\'\\\t\r\n (){}[]<>'
 BAD_FILETABLE = maketrans(BAD_FILECHARS, '_'*len(BAD_FILECHARS))
@@ -33,6 +34,8 @@ def winpath(d):
     if d.startswith('//'): d = d[1:]
     if d.startswith(UNIX_BASE):
         d = d.replace(UNIX_BASE, WIN_BASE)
+    if d.startswith(DARWIN_BASE):
+        d = d.replace(DARWIN_BASE, WIN_BASE)
     d = d.replace('/','\\')
     if not d.endswith('\\'): d = '%s\\' % d            
     return d
