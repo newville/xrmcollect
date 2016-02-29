@@ -3,6 +3,201 @@ import sys, os
 import time
 import epics
 
+class Dexela_AD(epics.Device):
+    camattrs = ('DEXAcquireOffset', 'DEXNumOffsetFrames', 
+                'ImageMode', 'TriggerMode',
+                'Acquire',  'AcquireTime', 'Model_RBV', 
+                'NumImages', 'ShutterControl', 'ShutterMode')
+
+    pathattrs = ('FilePath', 'FileTemplate', 'FileWriteMode',
+                 'FileName', 'FileNumber', 'FullFileName_RBV',
+                 'Capture',  'Capture_RBV', 'WriteFile_RBV',
+                 'NumCapture', 'NumCapture_RBV', 'NumCaptured_RBV',
+                 'AutoSave', 'EnableCallbacks',  'ArraySize0_RBV',
+                 'FileTemplate_RBV', 'FileName_RBV', 'AutoIncrement')
+
+    _nonpvs  = ('_prefix', '_pvs', '_delim', 'filesaver', 'fileroot',
+                'camattrs', 'pathattrs', '_nonpvs')
+
+    def __init__(self,prefix, filesaver='netCDF1:',
+                 fileroot='T:/'):
+        self.fileroot = fileroot
+        camprefix = prefix + 'cam1:'
+        epics.Device.__init__(self, camprefix, delim='',
+                              mutable=False,
+                              attrs=self.camattrs)
+        self.filesaver = "%s%s" % (prefix, filesaver)
+        for p in self.pathattrs:
+            pvname = '%s%s%s' % (prefix, filesaver, p)
+            self.add_pv(pvname, attr='File_'+p)
+
+    def AcquireOffset(self, timeout=30.0, open_shutter=True):
+        """Acquire Offset -- a slightly complex process
+
+        Arguments
+        ---------
+        timeout :       float (default 10)  time in seconds to wait
+        open_shutter :  bool (default True)  open shutters on exit
+ 
+        1. close shutter
+        2. set image mode to single /internal trigger
+        3. acquire offset correction
+        4. reset image mode and trigger mode
+        5. optionally (by default) open shutter
+        """
+        print 'Acquire Offset for Dexela Detector'
+        self.ShutterMode = 1
+        self.ShutterControl = 0
+        time.sleep(1.0)
+        # print 'ShutterMode to 1, Control to 0'
+        image_mode_save = self.ImageMode 
+        trigger_mode_save = self.TriggerMode 
+        self.ImageMode = 0
+        self.TriggerMode = 0
+        offtime = self.DEXNumOffsetFrames * self.AcquireTime
+        time.sleep(0.50)
+        self.DEXAcquireOffset = 1
+        t0 = time.time()
+        time.sleep(offtime/3.0)
+        while self.DEXAcquireOffset > 0 and time.time()-t0 < timeout+offtime:
+            time.sleep(0.1)
+        print 'OFFSET ',  self.DEXAcquireOffset,    self.DEXNumOffsetFrames
+        
+        time.sleep(1.00)
+        self.ImageMode = image_mode_save
+        self.TriggerMode = trigger_mode_save
+        time.sleep(1.0)
+        #print 'Now reopen shutter? ', open_shutter
+        if open_shutter:
+            self.ShutterControl = 1
+        self.ShutterMode = 0
+        time.sleep(1.0)
+        
+    def SetExposureTime(self, t, open_shutter=True):
+        "set exposure time, re-acquire offset correction"
+        self.AcquireTime = t
+        self.AcquireOffset(open_shutter=open_shutter)
+        
+    def SetMultiFrames(self, n, trigger='external'):
+        """set number of multiple frames for streaming
+        this sets number of images for camera in Multiple Image Mode
+        AND sets the number of images to capture with file plugin
+        """
+        self.ImageMode   = 2  #  continuous 
+        self.TriggerMode = 3  #  external neg edge
+
+        # self.TriggerMode = trigger_mode
+        # print 'DEX Det MultiFrames trigger_mode = ', self.TriggerMode
+        # number of images for collection and streaming
+        self.NumImages  = n
+        # set filesaver 
+        self.filePut('NumCapture',    n)
+        self.filePut('EnableCallbacks', 1)
+        self.filePut('FileNumber',    1)
+        time.sleep(1.0)
+
+    def StartStreaming(self):
+        """start streamed acquisition to save with 
+        file saving plugin, and start acquisition
+        """
+        self.ShutterMode = 0        
+        self.filePut('AutoSave', 1)
+        self.filePut('FileWriteMode', 2)  # stream
+        self.ResetStreaming()
+
+    def ResetStreaming(self):
+        print 'Reset Streaming! '
+        self.filePut('Capture', 0)   ;   time.sleep(0.25)
+        #self.Acquire     = 0 ; time.sleep(0.5)
+        #self.TriggerMode = 0 ; time.sleep(0.5)
+        #self.Acquire     = 1 ; time.sleep(1.5)
+        #self.Acquire     = 0 ; time.sleep(0.5)
+        #self.TriggerMode = 3 ; time.sleep(0.5)
+
+        self.filePut('Capture', 1) ;   time.sleep(0.25)
+        self.Acquire     = 1 ; time.sleep(0.50)
+        
+    def FinishStreaming(self, timeout=15.0):
+        """start streamed acquisition to save with 
+        file saving plugin, and start acquisition
+        """
+        t0 = time.time()
+        capture_on = self.fileGet('Capture_RBV')
+        while capture_on==1 and time.time() - t0 < timeout:
+            time.sleep(0.05)
+            capture_on = self.fileGet('Capture_RBV')
+        if capture_on != 0:
+            print 'Forcing XRD Streaming to stop'
+            self.filePut('Capture', 0)
+            t0 = time.time()
+            while capture_on==1 and time.time() - t0 < timeout:
+                time.sleep(0.05)
+                capture_on = self.fileGet('Capture_RBV')
+        time.sleep(0.25)
+        num_requested = self.fileGet('NumCapture_RBV')
+        num_received  = self.fileGet('NumCaptured_RBV')
+        return num_requested == num_received
+
+    def filePut(self, attr, value, **kw):
+        return self.put("File_%s" % attr, value, **kw)
+
+    def fileGet(self, attr, **kw):
+        return self.get("File_%s" % attr, **kw)
+
+    def setFilePath(self, pathname):
+        fullpath = pathname # os.path.join(self.fileroot, pathname)
+        return self.filePut('FilePath', fullpath)
+
+    def setFileTemplate(self, fmt):
+        return self.filePut('FileTemplate', fmt)
+
+    def setFileWriteMode(self, mode):
+        return self.filePut('FileWriteMode', mode)
+
+    def setFileName(self, fname):
+        return self.filePut('FileName', fname)
+
+    def nextFileNumber(self):
+        self.setFileNumber(1+self.fileGet('FileNumber'))
+
+    def setFileNumber(self, fnum=None):
+        if fnum is None:
+            self.filePut('AutoIncrement', 1)
+        else:
+            self.filePut('AutoIncrement', 0)
+            return self.filePut('FileNumber',fnum)
+
+    def getLastFileName(self):
+        return self.fileGet('FullFileName_RBV',as_string=True)
+
+    def FileCaptureOn(self):
+        return self.filePut('Capture', 1)
+
+    def FileCaptureOff(self):
+        return self.filePut('Capture', 0)
+
+    def setFileNumCapture(self,n):
+        return self.filePut('NumCapture', n)
+
+    def FileWriteComplete(self):
+        return (0==self.fileGet('WriteFile_RBV') )
+
+    def getFileTemplate(self):
+        return self.fileGet('FileTemplate_RBV',as_string=True)
+
+    def getFileName(self):
+        return self.fileGet('FileName_RBV',as_string=True)
+
+    def getFileNumber(self):
+        return self.fileGet('FileNumber_RBV')
+
+    def getFilePath(self):
+        return self.fileGet('FilePath_RBV',as_string=True)
+
+    def getFileNameByIndex(self,index):
+        return self.getFileTemplate() % (self.getFilePath(), self.getFileName(), index)
+
+
 class PerkinElmer_AD(epics.Device):
     camattrs = ('PEAcquireOffset', 'PENumOffsetFrames', 
                 'ImageMode', 'TriggerMode',
@@ -31,7 +226,7 @@ class PerkinElmer_AD(epics.Device):
             pvname = '%s%s%s' % (prefix, filesaver, p)
             self.add_pv(pvname, attr='File_'+p)
 
-    def AcquireOffset(self, timeout=10, open_shutter=True):
+    def AcquireOffset(self, timeout=15, open_shutter=True):
         """Acquire Offset -- a slightly complex process
 
         Arguments
@@ -110,12 +305,16 @@ class PerkinElmer_AD(epics.Device):
         self.ShutterMode = 0        
         self.filePut('AutoSave', 1)
         self.filePut('FileWriteMode', 2)  # stream
-        time.sleep(0.2)
+        time.sleep(0.1)
         self.filePut('Capture', 1)  # stream
+        time.sleep(0.25)
         self.Acquire = 1
-        time.sleep(0.75)
+        time.sleep(2.00)
 
-    def FinishStreaming(self, timeout=5.0):
+    def ResetStreaming(self):
+        pass
+
+    def FinishStreaming(self, timeout=15.0):
         """start streamed acquisition to save with 
         file saving plugin, and start acquisition
         """
@@ -145,8 +344,6 @@ class PerkinElmer_AD(epics.Device):
     def setFilePath(self, pathname):
         fullpath = pathname # os.path.join(self.fileroot, pathname)
         return self.filePut('FilePath', fullpath)
-        
-        return self.filePut('FilePath', pathname)
 
     def setFileTemplate(self, fmt):
         return self.filePut('FileTemplate', fmt)
