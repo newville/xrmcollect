@@ -7,6 +7,7 @@ from threading import Thread
 
 from epics import caput
 from epics.devices.struck import Struck
+from epics.devices.xspress3 import Xspress3
 
 from .utils import debugtime
 from .io.file_utils import (nativepath, winpath, fix_filename,
@@ -16,7 +17,6 @@ from .io.escan_writer import EscanWriter
 from .xps.xps_trajectory import XPSTrajectory
 from .xrd_ad import PerkinElmer_AD, Dexela_AD
 from .xmap import MultiXMAP
-from .xmap.xsp3 import XSP3
 
 from mapper import mapper
 from config import FastMapConfig
@@ -67,7 +67,7 @@ class TrajectoryScan(object):
         self.use_xrf  = conf.get('xrf',   'use')
         self.xrf_type = conf.get('xrf', 'type')
         self.xrf_pref = conf.get('xrf', 'prefix')
-        
+
         self.mapper = mapper(prefix=mapdb)
         self.scan_t0  = time.time()
         self.Connect_ENV_PVs()
@@ -86,13 +86,13 @@ class TrajectoryScan(object):
             if self.xrf_type.startswith('xmap'):
                 self.xmap = MultiXMAP(self.xrf_pref)
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3 = XSP3(self.xrf_pref, fileroot='/T/')
+                self.xsp3 = Xspress3(self.xrf_pref, fileroot='/T/')
 
         if self.use_xrd:
             filesaver = conf.get('xrd_ad', 'fileplugin')
             prefix    = conf.get('xrd_ad', 'prefix')
             xrd_type  = conf.get('xrd_ad', 'type')
-            print(" Use XRD ", prefix, xrd_type, filesaver)            
+            print(" Use XRD ", prefix, xrd_type, filesaver)
             self.xrdcam = PerkinElmer_AD(prefix, filesaver=filesaver)
             # self.xrdcam = Dexela_AD(prefix, filesaver=filesaver)
 
@@ -153,7 +153,7 @@ class TrajectoryScan(object):
             fname = increment_filename(fname)
             subdir = fname + '_rawmap'
             counter += 1
-                
+
         os.mkdir(subdir)
         self.mapper.filename = fname
 
@@ -185,17 +185,16 @@ class TrajectoryScan(object):
                 self.xmap.MCAMode(filename='xmap', npulses=npulses)
                 self.xmap.setFileNumber(1)
             elif self.xrf_type.startswith('xsp'):
-                self.xsp3.ERASE = 1
-                self.xsp3.NumImages = min(4000, npulses + 1)
+                self.xsp3.put('Acquire', 0)
+                self.xsp3.NumImages = min(16384, npulses + 1)
                 self.xsp3.setFileWriteMode(2)
                 self.xsp3.useExternalTrigger()
                 self.xsp3.setFileTemplate('%s%s.%4.4d')
                 self.xsp3.setFileName('xsp3')
                 self.xsp3.setFileNumber(1)
-                time.sleep(0.1)
-                self.xsp3.UPDATE = 1
-                self.xsp3.ERASE = 1
-                time.sleep(0.1)
+                time.sleep(0.025)
+                self.xsp3.put('Acquire', 0, wait=True)
+                self.xsp3.put('ERASE', 1, wait=True)
 
         if self.use_xrd:
             self.xrdcam.setFilePath(winpath(self.workdir))
@@ -203,7 +202,7 @@ class TrajectoryScan(object):
 
             # xrdpath = os.path.join("C:\\Data\\xas_user\\", subfolder)
             # xrdpath = "C:\\Data\\xas_user\\"
-            # self.xrdcam.setFilePath(winpath(xrdpath))            
+            # self.xrdcam.setFilePath(winpath(xrdpath))
             time_per_pixel = scantime/(npulses-1)
             # print 'PreScan XRD Camera: Time per pixel ', npulses, time_per_pixel
             self.xrdcam.SetExposureTime(time_per_pixel)
@@ -492,11 +491,16 @@ class TrajectoryScan(object):
         # self.dtime.show()
         self.dtime.clear()
 
+
     def check_beam_ok(self, timeout=120):
+
         conf = self.mapconf.get('beam_ok')
         flux_min = float(self.flux_min_pv.get())
         flux_val = float(self.flux_val_pv.get())
         if flux_val > flux_min:
+            return
+        if flux_min < 400.0:
+            print(" BEAM OK BY Cheating low Flux Level")
             return
 
         # if we get here, we'll want to redo the previous row
@@ -542,20 +546,19 @@ class TrajectoryScan(object):
             elif self.xrf_type.startswith('xsp'):
                 # complex Acquire On / FileCapture On:
                 self.xsp3.setFileNumber(scan_pt)
-                self.xsp3.Acquire = 0
-                time.sleep(0.1)
-                self.xsp3.ERASE  = 1
+                self.xsp3.put('Acquire', 0, wait=True)
+                self.xsp3.put('ERASE',  1, wait=True)
                 self.xsp3.FileCaptureOn()
                 time.sleep(0.1)
                 self.xsp3.Acquire = 1
-                time.sleep(0.10)
+                time.sleep(0.05)
 
         if self.use_xrd:
             self.xrdcam.setFileNumber(scan_pt)
             self.xrdcam.StartStreaming()
 
         self.struck.start()
-        time.sleep(0.10)
+        time.sleep(0.05)
 
         self.mapper.PV('Abort').put(0)
         self.dtime.add('exec: struck started.')
@@ -601,14 +604,15 @@ class TrajectoryScan(object):
             if time.time() - beacon_time > 5.0:
                 self.mapper.setTime()
                 beacon_time = time.time()
- 
+
         # wait for Xspress3 to finish
         if self.use_xrf and self.xrf_type.startswith('xsp'):
-            if self.xsp3.DetectorState_RBV != 0:
+            if self.xsp3.DetectorState_RBV not in (0, 10):
                 xsp3_ready = False
                 count = 0
                 while not xsp3_ready:
-                    xsp3_ready = (self.xsp3.DetectorState_RBV == 0) or (count > 50)
+                    xsp3_ready = self.xsp3.DetectorState_RBV in (0, 10)
+                    xsp3_ready = xsp3_ready or (count > 50)
                     time.sleep(0.1)
                     count = count + 1
                     if count > 10:
@@ -763,7 +767,7 @@ class TrajectoryScan(object):
         self.state = self.mapper.info = 'idle'
         self.mapper.ClearAbort()
         self.mapper.status = 0
-        self.mapper.setTime()        
+        self.mapper.setTime()
 
     def StartScan(self):
         self.dtime.clear()
