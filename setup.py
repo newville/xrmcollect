@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from distutils.core import setup
+from setuptools._distutils.core import setup
 import sys
 import lib
 
