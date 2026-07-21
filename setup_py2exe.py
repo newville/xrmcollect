@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools._distutils.core import setup
 import py2exe
 
 import epics
